@@ -1,0 +1,5 @@
+# Rust TCP Client
+
+[package]
+name = "rust-tcp-server"
+version = "1.0.0"
