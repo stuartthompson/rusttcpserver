@@ -1,11 +1,11 @@
-extern crate sha1;
 extern crate base64;
+extern crate sha1;
 
 mod httpparser;
 
-use sha1::{Sha1, Digest};
-use std::io::{Read, Write};
 use httpparser::parse_http_request;
+use sha1::{Digest, Sha1};
+use std::io::{Read, Write};
 
 fn handle_client(mut stream: std::net::TcpStream, address: std::net::SocketAddr) {
     // Spawn a thread to handle the new client
@@ -38,31 +38,54 @@ fn handle_client(mut stream: std::net::TcpStream, address: std::net::SocketAddr)
                     client_connected = false;
                 }
                 Ok(size) => {
-                    let msg = std::str::from_utf8(&data[0..size]).unwrap();
-                    println!("[Server] ({0}) Received {1} bytes: {2}", address, size, msg);
-
-                    // Reply with quoted message
-                    // let reply = format!("Thank you for saying: {0}", msg);
-                    // stream.write(reply.as_bytes()).expect("Error sending reply.");
-                    let request = parse_http_request(msg);
-                    // Calculate accept key
-                    let mut hasher = Sha1::new();
-                    hasher.input(request.sec_websocket_key.as_bytes());
-                    let hashed_result = hasher.result();
-                    let accept_key = base64::encode(hashed_result);
-                    if request.connection == "Upgrade" && request.upgrade == "websocket" {
-                        println!("Sending response to upgrade connection.");
-                        let upg_ws = format!("HTTP/1.1 101 Switching Protocols
-Upgrade: websocket
+                    match std::str::from_utf8(&data[0..size]) {
+                        Ok(msg) => {
+                            println!("[Server] ({0}) Received {1} bytes: {2}", address, size, msg);
+                            // Reply with quoted message
+                            // let reply = format!("Thank you for saying: {0}", msg);
+                            // stream.write(reply.as_bytes()).expect("Error sending reply.");
+                            let request = parse_http_request(msg);
+                            // Calculate accept key
+                            let mut hasher = Sha1::new();
+                            let appended = format!(
+                                "{0}{1}",
+                                request.sec_websocket_key, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+                            );
+                            hasher.input(appended.as_bytes());
+                            let hashed_result = hasher.result();
+                            let accept_key = base64::encode(hashed_result);
+                            if request.connection == "Upgrade" && request.upgrade == "websocket" {
+                                println!("Sending response to upgrade connection.");
+                                let upg_ws = format!(
+                                    "HTTP/1.1 101 Web Socket Protocol Handshake
+Upgrade: WebSocket
 Connection: Upgrade
 Sec-WebSocket-Accept: {0}
-Sec-WebSocket-Protocol: chat", accept_key);
-                        println!("Responding:");
-                        println!("{0}", upg_ws);
-                        stream.write(upg_ws.as_bytes()).expect("Error sending upgrade ws reply.");
-                    } else {
-                        let resp = b"HTTP/1.1 200 OK";
-                        stream.write(resp).expect("Error responding with 200.");
+Sec-WebSocket-Protocol: chat,
+Origin: 127.0.0.1:1234
+",
+                                    accept_key
+                                );
+                                println!("Responding:");
+                                println!("{0}", upg_ws);
+                                let fooresp = std::fmt::format(format_args!(
+                                    "HTTP/1.1 101 Switching Protocols\r\n\
+                    Connection: Upgrade\r\n\
+                    Sec-WebSocket-Accept: {}\r\n\
+                    Upgrade: websocket\r\n\r\n",
+                                    accept_key
+                                ));
+                                stream.write(fooresp.as_bytes()).expect("");
+                            //stream.write(upg_ws.as_bytes()).expect("Error sending upgrade ws reply.");
+                            //stream.flush().expect("Error flushing stream.");
+                            } else {
+                                let resp = b"HTTP/1.1 200 OK";
+                                stream.write(resp).expect("Error responding with 200.");
+                            }
+                        }
+                        Err(e) => {
+                            println!("Error: {}", e);
+                        }
                     }
                 }
                 Err(error) => {
