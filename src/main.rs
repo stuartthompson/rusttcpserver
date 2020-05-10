@@ -1,4 +1,11 @@
+extern crate sha1;
+extern crate base64;
+
+mod httpparser;
+
+use sha1::{Sha1, Digest};
 use std::io::{Read, Write};
+use httpparser::parse_http_request;
 
 fn handle_client(mut stream: std::net::TcpStream, address: std::net::SocketAddr) {
     // Spawn a thread to handle the new client
@@ -6,7 +13,7 @@ fn handle_client(mut stream: std::net::TcpStream, address: std::net::SocketAddr)
         println!("[Server] New client connection from {0}", address);
 
         let mut client_connected: bool = true;
-        let mut data = [0 as u8; 512]; // using 512 byte buffer
+        let mut data = [0 as u8; 4096]; // using 512 byte buffer
 
         match stream.set_nonblocking(false) {
             Ok(_) => {
@@ -35,8 +42,28 @@ fn handle_client(mut stream: std::net::TcpStream, address: std::net::SocketAddr)
                     println!("[Server] ({0}) Received {1} bytes: {2}", address, size, msg);
 
                     // Reply with quoted message
-                    let reply = format!("Thank you for saying: {0}", msg);
-                    stream.write(reply.as_bytes()).expect("Error sending reply.");
+                    // let reply = format!("Thank you for saying: {0}", msg);
+                    // stream.write(reply.as_bytes()).expect("Error sending reply.");
+                    let request = parse_http_request(msg);
+                    // Calculate accept key
+                    let mut hasher = Sha1::new();
+                    hasher.input(request.sec_websocket_key.as_bytes());
+                    let hashed_result = hasher.result();
+                    let accept_key = base64::encode(hashed_result);
+                    if request.connection == "Upgrade" && request.upgrade == "websocket" {
+                        println!("Sending response to upgrade connection.");
+                        let upg_ws = format!("HTTP/1.1 101 Switching Protocols
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Accept: {0}
+Sec-WebSocket-Protocol: chat", accept_key);
+                        println!("Responding:");
+                        println!("{0}", upg_ws);
+                        stream.write(upg_ws.as_bytes()).expect("Error sending upgrade ws reply.");
+                    } else {
+                        let resp = b"HTTP/1.1 200 OK";
+                        stream.write(resp).expect("Error responding with 200.");
+                    }
                 }
                 Err(error) => {
                     println!("[Server] ({0}) Error: {1}", address, error);
