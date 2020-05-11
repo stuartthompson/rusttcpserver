@@ -4,7 +4,8 @@ A simple Rust TCP server for me to learn with.
 
 
 ### Decoding Websocket Packets
-`
+
+```javascript
 /*
  * Decodes "Hello" from a websocket packet frame
  *
@@ -44,4 +45,4 @@ console.log('Message: ' + decoded);
 for (var i = 0; i < decoded.length; i++) {
   console.log(String.fromCharCode(decoded[i]));
 }
-`
+```
