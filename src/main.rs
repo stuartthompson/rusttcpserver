@@ -53,10 +53,8 @@ fn handle_client(mut stream: std::net::TcpStream, address: std::net::SocketAddr)
                     } else {
                         match std::str::from_utf8(&data[0..size]) {
                             Ok(msg) => {
-                                println!(
-                                    "[Server] ({0}) Received {1} bytes: {2}",
-                                    address, size, msg
-                                );
+                                println!("[Server] ({0}) Received {1} bytes:", address, size);
+                                println!("{0}", msg);
                                 // Reply with quoted message
                                 let request = parse_http_request(msg);
                                 if request.connection == "Upgrade" && request.upgrade == "websocket"
