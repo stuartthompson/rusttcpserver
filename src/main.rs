@@ -1,3 +1,11 @@
+extern crate base64;
+extern crate sha1;
+
+mod http;
+mod httpparser;
+mod websocket;
+
+use httpparser::parse_http_request;
 use std::io::{Read, Write};
 
 fn handle_client(mut stream: std::net::TcpStream, address: std::net::SocketAddr) {
@@ -6,7 +14,7 @@ fn handle_client(mut stream: std::net::TcpStream, address: std::net::SocketAddr)
         println!("[Server] New client connection from {0}", address);
 
         let mut client_connected: bool = true;
-        let mut data = [0 as u8; 512]; // using 512 byte buffer
+        let mut data = [0 as u8; 4096]; // using 512 byte buffer
 
         match stream.set_nonblocking(false) {
             Ok(_) => {
@@ -23,6 +31,7 @@ fn handle_client(mut stream: std::net::TcpStream, address: std::net::SocketAddr)
             }
         }
 
+        let mut is_ws = false;
         while client_connected {
             // Try to read from stream
             match stream.read(&mut data) {
@@ -30,13 +39,47 @@ fn handle_client(mut stream: std::net::TcpStream, address: std::net::SocketAddr)
                     println!("[Server] ({0}) Disconnected.", address);
                     client_connected = false;
                 }
+                Ok(1) => {
+                    println!("[Server] Received 1 byte.");
+                }
                 Ok(size) => {
-                    let msg = std::str::from_utf8(&data[0..size]).unwrap();
-                    println!("[Server] ({0}) Received {1} bytes: {2}", address, size, msg);
-
-                    // Reply with quoted message
-                    let reply = format!("Thank you for saying: {0}", msg);
-                    stream.write(reply.as_bytes()).expect("Error sending reply.");
+                    println!("[Server] Received {0} bytes.", size);
+                    if is_ws {
+                        // for i in 0..size {
+                        //     println!("Byte {0: >2} is {1: >3}: {1:0>8b}", i, data[i]);
+                        // }
+                        let content = websocket::parser::parse_frame(data, size);
+                        println!("Received: {0}", content);
+                    } else {
+                        match std::str::from_utf8(&data[0..size]) {
+                            Ok(msg) => {
+                                println!(
+                                    "[Server] ({0}) Received {1} bytes: {2}",
+                                    address, size, msg
+                                );
+                                // Reply with quoted message
+                                let request = parse_http_request(msg);
+                                if request.connection == "Upgrade" && request.upgrade == "websocket"
+                                {
+                                    // Build http response to upgrade to websocket
+                                    let response = http::response::upgrade_to_websocket(
+                                        request.sec_websocket_key,
+                                    );
+                                    println!("[Server] Sending response to upgrade connection.");
+                                    stream
+                                        .write(response.as_bytes())
+                                        .expect("Error sending response to upgrade to websocket.");
+                                    is_ws = true;
+                                } else {
+                                    let resp = b"HTTP/1.1 200 OK";
+                                    stream.write(resp).expect("Error responding with 200.");
+                                }
+                            }
+                            Err(e) => {
+                                println!("Error: {}", e);
+                            }
+                        }
+                    }
                 }
                 Err(error) => {
                     println!("[Server] ({0}) Error: {1}", address, error);

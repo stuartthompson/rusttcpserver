@@ -3,3 +3,7 @@
 [package]
 name = "rust-tcp-server"
 version = "1.0.0"
+
+[dependencies]
+sha-1 = "0.8.2"
+base64 = "0.12.1"
