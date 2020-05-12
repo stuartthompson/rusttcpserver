@@ -1,8 +1,9 @@
 extern crate base64;
 extern crate sha1;
 
-mod httpparser;
 mod http;
+mod httpparser;
+mod websocket;
 
 use httpparser::parse_http_request;
 use std::io::{Read, Write};
@@ -30,6 +31,7 @@ fn handle_client(mut stream: std::net::TcpStream, address: std::net::SocketAddr)
             }
         }
 
+        let mut is_ws = false;
         while client_connected {
             // Try to read from stream
             match stream.read(&mut data) {
@@ -42,28 +44,40 @@ fn handle_client(mut stream: std::net::TcpStream, address: std::net::SocketAddr)
                 }
                 Ok(size) => {
                     println!("[Server] Received {0} bytes.", size);
-                    for i in 0..size {
-                        println!("Byte {0: >2} is {1: >3}: {1:0>8b}", i, data[i]);
-                    }
-                    match std::str::from_utf8(&data[0..size]) {
-                        Ok(msg) => {
-                            println!("[Server] ({0}) Received {1} bytes: {2}", address, size, msg);
-                            // Reply with quoted message
-                            let request = parse_http_request(msg);
-                            
-                            if request.connection == "Upgrade" && request.upgrade == "websocket" {
-                                // Build http response to upgrade to websocket
-                                let response = http::response::upgrade_to_websocket(request.sec_websocket_key);
-                                println!("[Server] Sending response to upgrade connection.");
-                                stream.write(response.as_bytes()).expect("Error sending response to upgrade to websocket.");
-
-                            } else {
-                                let resp = b"HTTP/1.1 200 OK";
-                                stream.write(resp).expect("Error responding with 200.");
+                    if is_ws {
+                        // for i in 0..size {
+                        //     println!("Byte {0: >2} is {1: >3}: {1:0>8b}", i, data[i]);
+                        // }
+                        let content = websocket::parser::parse_frame(data, size);
+                        println!("Received: {0}", content);
+                    } else {
+                        match std::str::from_utf8(&data[0..size]) {
+                            Ok(msg) => {
+                                println!(
+                                    "[Server] ({0}) Received {1} bytes: {2}",
+                                    address, size, msg
+                                );
+                                // Reply with quoted message
+                                let request = parse_http_request(msg);
+                                if request.connection == "Upgrade" && request.upgrade == "websocket"
+                                {
+                                    // Build http response to upgrade to websocket
+                                    let response = http::response::upgrade_to_websocket(
+                                        request.sec_websocket_key,
+                                    );
+                                    println!("[Server] Sending response to upgrade connection.");
+                                    stream
+                                        .write(response.as_bytes())
+                                        .expect("Error sending response to upgrade to websocket.");
+                                    is_ws = true;
+                                } else {
+                                    let resp = b"HTTP/1.1 200 OK";
+                                    stream.write(resp).expect("Error responding with 200.");
+                                }
                             }
-                        }
-                        Err(e) => {
-                            println!("Error: {}", e);
+                            Err(e) => {
+                                println!("Error: {}", e);
+                            }
                         }
                     }
                 }
