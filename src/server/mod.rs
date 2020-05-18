@@ -12,7 +12,7 @@ pub fn start(
     main_rx: std::sync::mpsc::Receiver<String>,
 ) -> std::sync::mpsc::Receiver<String> {
     let listener =
-        std::net::TcpListener::bind(address).expect("[Server] Error binding TCP listener.");
+        std::net::TcpListener::bind(&address).expect("[Server] Error binding TCP listener.");
     // Create a channel to communicate back to main thread
     let (tx, rx) = std::sync::mpsc::channel::<String>();
 
@@ -29,12 +29,9 @@ pub fn start(
         }
     };
 
-    // Vector to store clients
-    // let mut clients: Vec<&Client> = Vec::new();
-
     // Start listener thread
     std::thread::spawn(move || {
-        println!("[Server] ({0}) listening on .address.", name);
+        println!("[Server] ({0}) listening on {1}", name, &address);
 
         let mut server_running: bool = true;
         let mut clients: Vec<std::sync::mpsc::Receiver<String>> = Vec::new();
