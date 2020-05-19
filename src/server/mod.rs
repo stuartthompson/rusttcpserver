@@ -1,6 +1,13 @@
 use websocket;
+use logger::{self, Log};
 
 use std::sync::mpsc::TryRecvError;
+
+struct Client {
+    address: String,
+    client_to_server_rx: std::sync::mpsc::Receiver<String>,
+    server_to_client_tx: std::sync::mpsc::Sender<String>
+}
 
 /**
  * Starts a TCP server.
@@ -11,6 +18,10 @@ pub fn start(
     is_admin: bool,
     main_rx: std::sync::mpsc::Receiver<String>,
 ) -> std::sync::mpsc::Receiver<String> {
+    // Logger
+    let logger = logger::Logger { source: String::from(&name) };
+
+    // Listener
     let listener =
         std::net::TcpListener::bind(&address).expect("[Server] Error binding TCP listener.");
     // Create a channel to communicate back to main thread
@@ -19,7 +30,7 @@ pub fn start(
     // Set to non-blocking mode
     match listener.set_nonblocking(true) {
         Ok(_) => {
-            println!("[Server] ({0}) set to non-blocking mode.", name);
+            logger.log_color("Set to non-blocking mode.", "red");
         }
         Err(err) => {
             println!(
@@ -34,20 +45,22 @@ pub fn start(
         println!("[Server] ({0}) listening on {1}", name, &address);
 
         let mut server_running: bool = true;
-        let mut clients: Vec<std::sync::mpsc::Receiver<String>> = Vec::new();
+        let mut clients: Vec<Client> = Vec::new();
 
         while server_running {
             // Check for an incoming connection
             match listener.accept() {
                 Ok((stream, address)) => {
-                    let (client_tx, client_rx) = std::sync::mpsc::channel::<String>();
-                    websocket::client::handle_client(stream, address, client_tx);
-                    clients.push(client_rx);
+                    let (client_to_server_tx, client_to_server_rx) = std::sync::mpsc::channel::<String>();
+                    let (server_to_client_tx, server_to_client_rx) = std::sync::mpsc::channel::<String>();
+                    
+                    let client = Client { address: address.to_string(), client_to_server_rx: client_to_server_rx, server_to_client_tx: server_to_client_tx };
+                    clients.push(client);
+
+                    websocket::client::handle_client(stream, address, client_to_server_tx, server_to_client_rx);
                 }
                 // Handle case where waiting for accept would become blocking
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    //println!("[Server] No incoming connections found.");
-                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(e) => {
                     println!(
                         "[Server] ({0}) Error accepting client connection. Error: {1}",
@@ -57,12 +70,12 @@ pub fn start(
             }
 
             // Check for notifications from existing clients
-            for client_rx in &clients {
-                match client_rx.try_recv() {
+            for client in &clients {
+                match client.client_to_server_rx.try_recv() {
                     Ok(message) => {
                         println!(
-                            "[Server] ({0}) Received message from client. Message: {1}",
-                            name, message
+                            "[{0}] ({1}) Received message from client. Message: {2}",
+                            name, client.address, message
                         );
                         if is_admin {
                             // Parse admin commands
@@ -71,7 +84,7 @@ pub fn start(
                     }
                     Err(TryRecvError::Empty) => {}
                     Err(TryRecvError::Disconnected) => panic!(
-                        "[Server] Error reading from client channel receiver. Channel disconnected"
+                        "[Server] Error reading from client channel receiver. Channel disconnected."
                     ),
                 }
             }
@@ -83,7 +96,7 @@ pub fn start(
                         "[Server] ({0}) Received message from main thread. Message: {1}",
                         name, message
                     );
-                    if message == "Shutdown" {
+                    if message == "StopServer" {
                         // Kill this server
                         server_running = false;
                     }
@@ -96,6 +109,34 @@ pub fn start(
 
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
+
+        // Shutdown clients
+        let connected_clients = &clients.len();
+        let mut disconnects = 0;
+        for client in &clients {
+            println!("[Server] ({0}) Sending disconnect request to client at address {1}.", name, client.address);
+            client.server_to_client_tx.send(String::from("Disconnect")).expect("[Server] ({0}) Error telling client to disconnect.");
+        }
+
+        while connected_clients > &disconnects {
+            for client in &clients {
+                match client.client_to_server_rx.try_recv() {
+                    Ok(message) => {
+                        if message == "Disconnected" {
+                            println!("[{0}] Client @ {1} disconnected.", name, client.address);
+                            disconnects = disconnects + 1;
+                        }
+                    }
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => {},
+                }
+            }
+            println!("Waiting for client disconnects.");
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+        }
+
+        // Indicate to the main thread that this server has stopped
+        tx.send(String::from("ServerStopped")).expect("[Server] Error sending ServerStopped message to main thread.");
     });
 
     return rx;
