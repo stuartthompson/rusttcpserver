@@ -1,12 +1,8 @@
 use std::sync::mpsc::TryRecvError;
 use logger::{self, Log};
-use super::client::{self, HttpClient};
-
-// struct Client {
-//     address: String,
-//     client_to_server_rx: std::sync::mpsc::Receiver<String>,
-//     server_to_client_tx: std::sync::mpsc::Sender<String>
-// }
+use super::http_client_handler::HttpClientHandler;
+use super::http_client::HttpClient;
+use crate::channel::Channel;
 
 /**
  * Represents an HTTP server.
@@ -64,15 +60,16 @@ pub fn start(
                     let (client_to_server_tx, client_to_server_rx) = std::sync::mpsc::channel::<String>();
                     let (server_to_client_tx, server_to_client_rx) = std::sync::mpsc::channel::<String>();
                     
-                    let client = HttpClient { 
-                        address: address, 
-                        client_to_server_rx: client_to_server_rx,
-                        server_to_client_tx: server_to_client_tx,
-                        is_connected: false
+                    // Create new HTTP client
+                    let client = HttpClient {
+                        address: address,
+                        channel: Channel { sender: server_to_client_tx, receiver: client_to_server_rx }
                     };
                     clients.push(client);
 
-                    client::handle_client(stream, address, client_to_server_tx, server_to_client_rx);
+                    // Create new HTTP client handler
+                    let client_handler = HttpClientHandler::new(stream, address, client_to_server_tx, server_to_client_rx);
+                    client_handler.handle_client();
                 }
                 // Handle case where waiting for accept would become blocking
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
@@ -86,7 +83,7 @@ pub fn start(
 
             // Check for notifications from existing clients
             for client in &clients {
-                match client.client_to_server_rx.try_recv() {
+                match client.channel.receiver.try_recv() {
                     Ok(message) => {
                         println!(
                             "[{0}] ({1}) Received message from client. Message: {2}",
@@ -130,12 +127,12 @@ pub fn start(
         let mut disconnects = 0;
         for client in &clients {
             println!("[Server] ({0}) Sending disconnect request to client at address {1}.", name, client.address);
-            client.server_to_client_tx.send(String::from("Disconnect")).expect("[Server] ({0}) Error telling client to disconnect.");
+            client.channel.sender.send(String::from("Disconnect")).expect("[Server] ({0}) Error telling client to disconnect.");
         }
 
         while connected_clients > &disconnects {
             for client in &clients {
-                match client.client_to_server_rx.try_recv() {
+                match client.channel.receiver.try_recv() {
                     Ok(message) => {
                         if message == "Disconnected" {
                             println!("[{0}] Client @ {1} disconnected.", name, client.address);

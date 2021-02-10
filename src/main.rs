@@ -5,6 +5,7 @@ extern crate colored;
 mod http;
 mod websocket;
 mod logger;
+mod channel;
 
 use std::sync::mpsc::TryRecvError;
 use colored::*;
