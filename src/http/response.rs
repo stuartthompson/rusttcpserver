@@ -1,12 +1,12 @@
 use sha1::{Digest, Sha1};
 
-pub fn upgrade_to_websocket(upgrade_key: String) -> String {
+pub fn upgrade_to_websocket(upgrade_key: &String) -> String {
     let accept_key = build_ws_accept_key(upgrade_key);
 
     return build_response(accept_key);
 }
 
-fn build_ws_accept_key(upgrade_key: String) -> String {
+fn build_ws_accept_key(upgrade_key: &String) -> String {
     // Calculate accept key
     let mut hasher = Sha1::new();
     let appended = format!(
