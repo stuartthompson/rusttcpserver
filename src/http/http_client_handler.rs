@@ -36,7 +36,7 @@ impl HttpClientHandler {
      * Instantiates a new HttpClientHandler.
      */
     pub fn new(
-        mut stream: std::net::TcpStream,
+        stream: std::net::TcpStream,
         address: std::net::SocketAddr,
         to_server_tx: std::sync::mpsc::Sender<String>,
         from_server_rx: std::sync::mpsc::Receiver<String>,
@@ -63,6 +63,13 @@ impl HttpClientHandler {
                 &self.address
             );
 
+            // Mark client as connected
+            self.is_connected = true;
+            self.server_channel
+                .sender
+                .send(String::from("Connected"))
+                .expect("Error notifying server of client connection.");
+
             let mut buffer = [0 as u8; 4096];
             // Run while the client is connected
             while self.is_connected {
@@ -76,41 +83,46 @@ impl HttpClientHandler {
                             .expect("Error notifying server of client disconnect.");
                     }
                     Ok(size) => {
-                        //handle_request(&stream, &address, &mut buffer, &size, &to_server_tx);
+                        self.handle_request(&mut buffer, &size);
                     }
                     // Handle case where waiting for accept would become blocking
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                     // Handle error case
                     Err(error) => {
                         self.handle_error(&error);
+                        // Mark the client as disconnected
+                        self.is_connected = false;
                     }
                 }
-            }
 
-            // Check for messages from server
-            match self.server_channel.receiver.try_recv() {
-                Ok(message) => {
-                    if message == "Disconnect" {
-                        println!(
-                            "[Client @ {0}] Received notification from server to disconnect.",
-                            self.address
-                        );
-                        self.stream
-                            .shutdown(std::net::Shutdown::Both)
-                            .expect("Failed to shutdown client.");
+                // Check for messages from server
+                match self.server_channel.receiver.try_recv() {
+                    Ok(message) => {
+                        if message == "Disconnect" {
+                            println!(
+                                "[Client @ {0}] Received notification from server to disconnect.",
+                                self.address
+                            );
+                            self.stream
+                                .shutdown(std::net::Shutdown::Both)
+                                .expect("Failed to shutdown client.");
+                            // Mark the client as disconnected
+                            self.is_connected = false;
+                        }
+                    }
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => {
+                        println!("[Client @ {0}] Error receiving from server.", self.address);
                     }
                 }
-                Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => {
-                    println!("[Client @ {0}] Error receiving from server.", self.address);
-                }
+
+                // Sleep for a short time (let the client do something)
+                std::thread::sleep(std::time::Duration::from_millis(100));
             }
 
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        });
-
-        // Finalize disconnect
-        self.server_channel.sender.send(String::from("Disconnected")).expect("Error notifying server that client disconnected.");
+            // Finalize disconnect
+            self.server_channel.sender.send(String::from("Disconnected")).expect("Error notifying server that client disconnected.");
+        });        
     }
 
     /**
@@ -123,8 +135,6 @@ impl HttpClientHandler {
             .sender
             .send(String::from("Client Communication Error"))
             .expect("Error notifying server of client communication error.");
-        // Mark the client as disconnected
-        self.is_connected = false;
     }
 
     /**
@@ -143,9 +153,9 @@ impl HttpClientHandler {
 
                 // Is this a request to upgrade to a websocket?
                 if request.connection == "Upgrade" && request.upgrade == "websocket" {
-                    self.handle_websocket_upgrade_request(&request);
+                    self.handle_websocket_upgrade_request(&self.stream, &request);
                 } else {
-                    self.handle_http_request();
+                    self.handle_http_request(&self.stream);
                 }
             }
             Err(error) => {
@@ -160,10 +170,10 @@ impl HttpClientHandler {
     /**
      * Handles an HTTP request.
      */
-    fn handle_http_request(self: &HttpClientHandler) {
+    fn handle_http_request(self: &HttpClientHandler, mut stream: &std::net::TcpStream) {
         // Just respond with 200 OK
         let resp = b"HTTP/1.1 200 OK";
-        match self.stream.write(resp) {
+        match stream.write(resp) {
             Ok(_) => {
                 println!(
                     "[HTTP Client] ({0}) Sent response HTTP 200 OK",
@@ -182,7 +192,7 @@ impl HttpClientHandler {
     /**
      * Handles a WebSocket upgrade request.
      */
-    fn handle_websocket_upgrade_request(self: &HttpClientHandler, request: &HttpRequest) {
+    fn handle_websocket_upgrade_request(self: &HttpClientHandler, mut stream: &std::net::TcpStream, request: &HttpRequest) {
         println!(
             "[HTTP Client] ({0}) Received request from client to upgrade to WebSocket connection.",
             self.address
@@ -191,7 +201,7 @@ impl HttpClientHandler {
         let response = response::upgrade_to_websocket(&request.sec_websocket_key);
         // Send response to client accepting upgrade request
         println!("[HTTP Client] ({0}) Sending response accepting request to upgrade to WebSocket connection.", self.address);
-        self.stream
+        stream
             .write(response.as_bytes())
             .expect("Error sending response to upgrade to websocket.");
 

@@ -3,7 +3,6 @@ extern crate sha1;
 extern crate colored;
 
 mod http;
-mod websocket;
 mod logger;
 mod channel;
 

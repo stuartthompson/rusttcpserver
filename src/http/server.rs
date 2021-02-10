@@ -1,8 +1,14 @@
 use std::sync::mpsc::TryRecvError;
 use logger::{self, Log};
-use super::http_client_handler::HttpClientHandler;
-use super::http_client::HttpClient;
+use super::tcp_client_handler::{TcpClientType, TcpClientHandler};
 use crate::channel::Channel;
+
+struct TcpClient {
+    pub address: std::net::SocketAddr,
+    pub client_type: TcpClientType,
+    pub is_connected: bool,
+    pub channel: Channel<String>
+}
 
 /**
  * Represents an HTTP server.
@@ -51,25 +57,31 @@ pub fn start(
         println!("[Server] ({0}) listening on {1}", name, &address);
 
         let mut server_running: bool = true;
-        let mut clients: Vec<HttpClient> = Vec::new();
+        let mut clients: Vec<TcpClient> = Vec::new();
 
         while server_running {
             // Check for an incoming connection
             match listener.accept() {
                 Ok((stream, address)) => {
-                    let (client_to_server_tx, client_to_server_rx) = std::sync::mpsc::channel::<String>();
-                    let (server_to_client_tx, server_to_client_rx) = std::sync::mpsc::channel::<String>();
+                    let server_channel = Channel::new();
+                    let client_channel = Channel::new();
                     
-                    // Create new HTTP client
-                    let client = HttpClient {
-                        address: address,
-                        channel: Channel { sender: server_to_client_tx, receiver: client_to_server_rx }
-                    };
-                    clients.push(client);
+                    // Hand off to a new TCP client handler
+                    TcpClientHandler::handle_new_client(
+                        stream, 
+                        address, 
+                        TcpClientType::Http,
+                        server_channel);
 
-                    // Create new HTTP client handler
-                    let client_handler = HttpClientHandler::new(stream, address, client_to_server_tx, server_to_client_rx);
-                    client_handler.handle_client();
+                    // Define a tracking client (used by the server to passively keep track of the client)
+                    let client = TcpClient {
+                        address: address,
+                        client_type: TcpClientType::Http,
+                        is_connected: false,
+                        channel: client_channel
+                    };
+
+                    &clients.push(client);
                 }
                 // Handle case where waiting for accept would become blocking
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
@@ -82,13 +94,25 @@ pub fn start(
             }
 
             // Check for notifications from existing clients
-            for client in &clients {
+            for client in clients.iter_mut() {
                 match client.channel.receiver.try_recv() {
                     Ok(message) => {
                         println!(
                             "[{0}] ({1}) Received message from client. Message: {2}",
                             name, client.address, message
                         );
+                        // TODO: This should be a command parser (vs. if blocks)
+                        if message == "Connected" {
+                            // TODO: Mark the client as connected
+                            client.is_connected = false;
+                        }
+
+                        if message == "Upgrade to WebSocket" {
+                            // ** UPGRADE THE HANDLER TO WEBSOCKET **
+                            client.client_type = TcpClientType::WebSocket;
+                        }
+
+                        // Parse admin commands (if this is the admin server)
                         if is_admin {
                             // Parse admin commands
                             parse_admin_command(message, &tx);
