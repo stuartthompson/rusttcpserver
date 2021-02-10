@@ -63,22 +63,25 @@ pub fn start(
             // Check for an incoming connection
             match listener.accept() {
                 Ok((stream, address)) => {
-                    let server_channel = Channel::new();
-                    let client_channel = Channel::new();
+                    let (client_to_server_tx, client_to_server_rx) = std::sync::mpsc::channel::<String>();
+                    let (server_to_client_tx, server_to_client_rx) = std::sync::mpsc::channel::<String>();
+
+                    let client_channel = Channel { sender: client_to_server_tx, receiver: server_to_client_rx };
+                    let server_channel = Channel { sender: server_to_client_tx, receiver: client_to_server_rx };
                     
                     // Hand off to a new TCP client handler
                     TcpClientHandler::handle_new_client(
                         stream, 
                         address, 
                         TcpClientType::Http,
-                        server_channel);
+                        client_channel);
 
                     // Define a tracking client (used by the server to passively keep track of the client)
                     let client = TcpClient {
                         address: address,
                         client_type: TcpClientType::Http,
                         is_connected: false,
-                        channel: client_channel
+                        channel: server_channel
                     };
 
                     &clients.push(client);
@@ -93,7 +96,7 @@ pub fn start(
                 }
             }
 
-            // Check for notifications from existing clients
+            // Check for notifications from clients
             for client in clients.iter_mut() {
                 match client.channel.receiver.try_recv() {
                     Ok(message) => {
@@ -104,7 +107,7 @@ pub fn start(
                         // TODO: This should be a command parser (vs. if blocks)
                         if message == "Connected" {
                             // TODO: Mark the client as connected
-                            client.is_connected = false;
+                            client.is_connected = true;
                         }
 
                         if message == "Upgrade to WebSocket" {
@@ -114,8 +117,13 @@ pub fn start(
 
                         // Parse admin commands (if this is the admin server)
                         if is_admin {
-                            // Parse admin commands
-                            parse_admin_command(message, &tx);
+                            // Check for shutdown command
+                            if message == "ShutdownServer" {
+                                println!("[Server] Admin command ShutdownServer received. Notifying Shutdown.");
+                                tx
+                                    .send(String::from("Shutdown"))
+                                    .expect("Error sending shutdown notification to main thread.");
+                            }
                         }
                     }
                     Err(TryRecvError::Empty) => {}
@@ -182,11 +190,5 @@ pub fn start(
  * Parses an admin command.
  */
 fn parse_admin_command(command: String, main_tx: &std::sync::mpsc::Sender<String>) {
-    // Check for shutdown command
-    if command == "ShutdownServer" {
-        println!("[Server] Admin command ShutdownServer received. Notifying Shutdown.");
-        main_tx
-            .send(String::from("Shutdown"))
-            .expect("Error sending shutdown notification to main thread.");
-    }
+   
 }

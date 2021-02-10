@@ -155,6 +155,7 @@ impl TcpClientHandler {
                     sec_websocket_key);
             }
             TcpClientAction::RequestServerShutdown => {
+                println!("[TCP Client Handler] ({0}): Received ShutdownServer request from handler.", self.address);
                 self.server_channel
                     .sender
                     .send(String::from("ShutdownServer"))
