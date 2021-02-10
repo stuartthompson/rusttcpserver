@@ -7,6 +7,7 @@ mod logger;
 mod channel;
 
 use std::sync::mpsc::TryRecvError;
+use http::server::HttpServer;
 use colored::*;
 
 fn main() {
@@ -37,22 +38,38 @@ fn main() {
 
     // Channel to communicate with the servers
     let (main_to_client_tx, main_to_client_rx) = std::sync::mpsc::channel::<String>();
+    let (client_to_main_tx, client_to_main_rx) = std::sync::mpsc::channel::<String>();
     let (main_to_admin_tx, main_to_admin_rx) = std::sync::mpsc::channel::<String>();
+    let (admin_to_main_tx, admin_to_main_rx) = std::sync::mpsc::channel::<String>();
 
     // Start client server
     let client_address = format!("{0}:{1}", &ip, &port);
-    let client_rx = http::server::start(client_address, String::from("Client Server"), false, main_to_client_rx);
+    let client_server: HttpServer = HttpServer {
+        address: client_address,
+        name: String::from("Client Server"),
+        is_admin_server: false,
+        main_to_server_rx: main_to_client_rx,
+        server_to_main_tx: client_to_main_tx
+    };
+    client_server.start();
 
     // Start admin server
     let admin_address = format!("{0}:{1}", &ip, &admin_port);
-    let admin_rx = http::server::start(admin_address, String::from("Admin Server"), true, main_to_admin_rx);
+    let admin_server: HttpServer = HttpServer {
+        address: admin_address,
+        name: String::from("Admin Server"),
+        is_admin_server: true,
+        main_to_server_rx: main_to_admin_rx,
+        server_to_main_tx: admin_to_main_tx
+    };
+    admin_server.start();
 
     // Server running flag
     let mut server_running = true;
 
     while server_running {
         // Check for messages from client server
-        match client_rx.try_recv() {
+        match client_to_main_rx.try_recv() {
             Ok(message) => {
                 println!("[Main] Client server said: {0}", message);
             }
@@ -63,7 +80,7 @@ fn main() {
         }
 
         // Check for messages from admin server
-        match admin_rx.try_recv() {
+        match admin_to_main_rx.try_recv() {
             Ok(message) => {
                 println!("[Main] Admin server said: {0}", message);
 
@@ -92,7 +109,7 @@ fn main() {
     // Wait for client and admin servers to stop
     while client_server_running || admin_server_running {
         if client_server_running {
-            match client_rx.try_recv() {
+            match client_to_main_rx.try_recv() {
                 Ok(message) => {
                     if message == "ServerStopped" {
                         client_server_running = false;
@@ -107,7 +124,7 @@ fn main() {
         }
 
         if admin_server_running {
-            match admin_rx.try_recv() {
+            match admin_to_main_rx.try_recv() {
                 Ok(message) => {
                     if message == "ServerStopped" {
                         admin_server_running = false;
