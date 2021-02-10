@@ -5,10 +5,12 @@ extern crate colored;
 mod http;
 mod logger;
 mod channel;
+mod banner;
 
 use std::sync::mpsc::TryRecvError;
 use http::server::HttpServer;
 use colored::*;
+use banner::{Banner, BannerLine};
 
 fn main() {
     // Print banner
@@ -175,30 +177,17 @@ fn print_startup_info(ip: &str, port: &str, admin_port: &str) {
     println!("{} {} {} {}", edge, "Startup Parameters ".blue(), ("Startup Parameters ".len()+3..startup_panel_width).map(|_| " ").collect::<String>(), edge);
     println!("{}{}{}", edge, (0..startup_panel_width).map(|_| " ").collect::<String>(), edge);
 
-    // IP address banner line
-    let ipAddressBannerLine = BannerLine { 
-        parts: vec![
-            BannerPart { text: String::from("  IP Address: "), color: String::from("white")},
-            BannerPart { text: String::from(ip), color: String::from("cyan") }
-        ]
+    // Describe banner
+    let banner: Banner = Banner {
+        lines: vec![
+            BannerLine::build_key_value("  IP Address: ", "white", ip, "cyan"),
+            BannerLine::build_key_value("  Admin Port: ", "white", admin_port, "cyan"),
+            BannerLine::build_key_value(" Public Port: ", "white", port, "cyan")
+        ],
+        width: startup_panel_width
     };
-    print_banner_line(ipAddressBannerLine, startup_panel_width);
-
-    let adminPortBannerLine = BannerLine { 
-        parts: vec![
-            BannerPart { text: String::from("  Admin Port: "), color: String::from("white")},
-            BannerPart { text: String::from(admin_port), color: String::from("cyan") }
-        ]
-    };
-    print_banner_line(adminPortBannerLine, startup_panel_width);
-
-    let publicPortBannerLine = BannerLine { 
-        parts: vec![
-            BannerPart { text: String::from(" Public Port: "), color: String::from("white")},
-            BannerPart { text: String::from(port), color: String::from("cyan") }
-        ]
-    };
-    print_banner_line(publicPortBannerLine, startup_panel_width);
+    // Print banner
+    banner.print();
 
     println!("{}", bottom);
 
@@ -206,30 +195,4 @@ fn print_startup_info(ip: &str, port: &str, admin_port: &str) {
     print!("{}", "test".color("blue"));
 }
 
-pub struct BannerLine {
-    parts: Vec<BannerPart>
-}
 
-pub struct BannerPart {
-    text: String,
-    color: String
-}
-
-fn print_banner_line(line: BannerLine, panel_width: usize) {
-    let edge = "│".green();
-    let mut col: usize = 0;
-
-    // Print left edge plus one space (col: 2)
-    print!("{} ", edge);
-    col = 1;
-
-    // Print parts
-    for part in line.parts.iter() {
-        print!("{}", part.text.color(&part.color[..]));
-        col = col + part.text.len();
-    }
-
-    // Print remaining space
-    print!("{}", (col..panel_width).map(|_| " ").collect::<String>());
-    println!("{}", edge);
-}
