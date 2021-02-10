@@ -172,10 +172,64 @@ fn print_startup_info(ip: &str, port: &str, admin_port: &str) {
     let edge = "│".green();
 
     println!("{}", top);
-    println!("{} {} {} {}", edge, "Startup Parameters ".blue(), " ", edge);
-    println!("{}{}{}", edge, "  ", edge);
-    println!("{}   IP Address: {} {}", edge, ip.cyan(), edge);
-    println!("{}   Admin Port: {} {}", edge, admin_port.cyan(), edge);
-    println!("{}  Public Port: {} {}", edge, port.cyan(), edge);
+    println!("{} {} {} {}", edge, "Startup Parameters ".blue(), ("Startup Parameters ".len()+3..startup_panel_width).map(|_| " ").collect::<String>(), edge);
+    println!("{}{}{}", edge, (0..startup_panel_width).map(|_| " ").collect::<String>(), edge);
+
+    // IP address banner line
+    let ipAddressBannerLine = BannerLine { 
+        parts: vec![
+            BannerPart { text: String::from("  IP Address: "), color: String::from("white")},
+            BannerPart { text: String::from(ip), color: String::from("cyan") }
+        ]
+    };
+    print_banner_line(ipAddressBannerLine, startup_panel_width);
+
+    let adminPortBannerLine = BannerLine { 
+        parts: vec![
+            BannerPart { text: String::from("  Admin Port: "), color: String::from("white")},
+            BannerPart { text: String::from(admin_port), color: String::from("cyan") }
+        ]
+    };
+    print_banner_line(adminPortBannerLine, startup_panel_width);
+
+    let publicPortBannerLine = BannerLine { 
+        parts: vec![
+            BannerPart { text: String::from(" Public Port: "), color: String::from("white")},
+            BannerPart { text: String::from(port), color: String::from("cyan") }
+        ]
+    };
+    print_banner_line(publicPortBannerLine, startup_panel_width);
+
     println!("{}", bottom);
+
+
+    print!("{}", "test".color("blue"));
+}
+
+pub struct BannerLine {
+    parts: Vec<BannerPart>
+}
+
+pub struct BannerPart {
+    text: String,
+    color: String
+}
+
+fn print_banner_line(line: BannerLine, panel_width: usize) {
+    let edge = "│".green();
+    let mut col: usize = 0;
+
+    // Print left edge plus one space (col: 2)
+    print!("{} ", edge);
+    col = 1;
+
+    // Print parts
+    for part in line.parts.iter() {
+        print!("{}", part.text.color(&part.color[..]));
+        col = col + part.text.len();
+    }
+
+    // Print remaining space
+    print!("{}", (col..panel_width).map(|_| " ").collect::<String>());
+    println!("{}", edge);
 }
