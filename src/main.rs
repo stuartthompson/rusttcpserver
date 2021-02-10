@@ -3,8 +3,6 @@ extern crate sha1;
 extern crate colored;
 
 mod http;
-mod httpparser;
-mod server;
 mod websocket;
 mod logger;
 
@@ -43,11 +41,11 @@ fn main() {
 
     // Start client server
     let client_address = format!("{0}:{1}", &ip, &port);
-    let client_rx = server::start(client_address, String::from("Client Server"), false, main_to_client_rx);
+    let client_rx = http::server::start(client_address, String::from("Client Server"), false, main_to_client_rx);
 
     // Start admin server
     let admin_address = format!("{0}:{1}", &ip, &admin_port);
-    let admin_rx = server::start(admin_address, String::from("Admin Server"), true, main_to_admin_rx);
+    let admin_rx = http::server::start(admin_address, String::from("Admin Server"), true, main_to_admin_rx);
 
     // Server running flag
     let mut server_running = true;

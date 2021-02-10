@@ -1,16 +1,26 @@
-use websocket;
-use logger::{self, Log};
-
 use std::sync::mpsc::TryRecvError;
+use logger::{self, Log};
+use super::client::{self, HttpClient};
 
-struct Client {
+// struct Client {
+//     address: String,
+//     client_to_server_rx: std::sync::mpsc::Receiver<String>,
+//     server_to_client_tx: std::sync::mpsc::Sender<String>
+// }
+
+/**
+ * Represents an HTTP server.
+ */
+struct HttpServer {
     address: String,
-    client_to_server_rx: std::sync::mpsc::Receiver<String>,
-    server_to_client_tx: std::sync::mpsc::Sender<String>
+    name: String,
+    is_admin_server: bool,
+    main_to_server_rx: std::sync::mpsc::Receiver<String>,
+    server_to_main_tx: std::sync::mpsc::Receiver<String>
 }
 
 /**
- * Starts a TCP server.
+ * Starts an HTTP server.
  */
 pub fn start(
     address: String,
@@ -45,7 +55,7 @@ pub fn start(
         println!("[Server] ({0}) listening on {1}", name, &address);
 
         let mut server_running: bool = true;
-        let mut clients: Vec<Client> = Vec::new();
+        let mut clients: Vec<HttpClient> = Vec::new();
 
         while server_running {
             // Check for an incoming connection
@@ -54,10 +64,15 @@ pub fn start(
                     let (client_to_server_tx, client_to_server_rx) = std::sync::mpsc::channel::<String>();
                     let (server_to_client_tx, server_to_client_rx) = std::sync::mpsc::channel::<String>();
                     
-                    let client = Client { address: address.to_string(), client_to_server_rx: client_to_server_rx, server_to_client_tx: server_to_client_tx };
+                    let client = HttpClient { 
+                        address: address, 
+                        client_to_server_rx: client_to_server_rx,
+                        server_to_client_tx: server_to_client_tx,
+                        is_connected: false
+                    };
                     clients.push(client);
 
-                    websocket::client::handle_client(stream, address, client_to_server_tx, server_to_client_rx);
+                    client::handle_client(stream, address, client_to_server_tx, server_to_client_rx);
                 }
                 // Handle case where waiting for accept would become blocking
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
