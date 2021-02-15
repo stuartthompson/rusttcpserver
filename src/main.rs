@@ -1,20 +1,19 @@
 extern crate base64;
 extern crate sha1;
 extern crate colored;
+extern crate banner;
 
 mod http;
 mod logger;
 mod channel;
-mod banner;
 
 use std::sync::mpsc::TryRecvError;
 use http::server::HttpServer;
-use colored::*;
-use banner::{Banner, BannerLine};
+use banner::{Banner, Style, HeaderLevel, Color};
 
 fn main() {
     // Print banner
-    print_banner("WebRockets Server", "A simple HTTP/WebSockets server.");
+    print_title_banner();
 
     // Verify startup arguments
     if std::env::args().len() != 4 {
@@ -33,7 +32,7 @@ fn main() {
         .nth(3)
         .expect("Expected argument 3 to be admin port.");
 
-    print_startup_info(&ip, &port, &admin_port);
+    print_startup_banner(&ip, &port, &admin_port);
 
     // Logger
     let logger = logger::Logger { source: String::from("Main") };
@@ -145,54 +144,42 @@ fn main() {
     std::thread::sleep(std::time::Duration::from_millis(3000));
 }
 
-fn print_banner(title: &str, description: &str) {
-    // Calculate banner dimensions
-    let banner_width = if title.len() > description.len() { title.len() } else { description.len() };
-    let title_pad_width = (banner_width - title.len()) / 2;
-    let desc_pad_width = banner_width - description.len();
+fn print_title_banner() {
+    // Create a style
+    let mut style: Style = Style::new();
+    style.border.color = Color::Red;
+    style.h1.content_color = Color::Yellow;
+    style.text.content_color = Color::White;
+    
+    // Create header banner
+    let mut banner = Banner::new(&style);
+    // TODO: Remove when default width is fixed
+    banner.width = 0;
 
-    let banner_top = format!("┌{}┐", (0..banner_width + 3).map(|_| "─").collect::<String>()).magenta();
-    let banner_bottom = format!("└{}┘", (0..banner_width + 3).map(|_| "─").collect::<String>()).magenta();
-    let title_pad = (0..title_pad_width).map(|_| "~").collect::<String>().red();
-    let empty_pad = (0..banner_width + 1).map(|_| " ").collect::<String>();
-    let desc_pad = (0..desc_pad_width).map(|_| " ").collect::<String>();
-    let lr_border = "│".magenta();
+    // Add headers
+    banner.add_header("WebRockets", HeaderLevel::H1);
+    banner.add_text("A simple HTTP/WebSockets server.");
 
-    println!();
-    println!("{}", banner_top);
-    println!("{} {} {} {} {}", lr_border, title_pad, title.yellow(), title_pad, lr_border);
-    println!("{} {} {}", lr_border, empty_pad, lr_border);
-    println!("{} {} {} {}", lr_border, description, desc_pad, lr_border);
-    println!("{}", banner_bottom);
-}
-
-fn print_startup_info(ip: &str, port: &str, admin_port: &str) {
-    let startup_panel_width = 35;
-
-    let top = format!("┌{}┐", (0..startup_panel_width).map(|_| "─").collect::<String>()).green();
-    let bottom = format!("└{}┘", (0..startup_panel_width).map(|_| "─").collect::<String>()).green();
-    let edge = "│".green();
-
-    println!("{}", top);
-    println!("{} {} {} {}", edge, "Startup Parameters ".blue(), ("Startup Parameters ".len()+3..startup_panel_width).map(|_| " ").collect::<String>(), edge);
-    println!("{}{}{}", edge, (0..startup_panel_width).map(|_| " ").collect::<String>(), edge);
-
-    // Describe banner
-    let banner: Banner = Banner {
-        lines: vec![
-            BannerLine::build_key_value("  IP Address: ", "white", ip, "cyan"),
-            BannerLine::build_key_value("  Admin Port: ", "white", admin_port, "cyan"),
-            BannerLine::build_key_value(" Public Port: ", "white", port, "cyan")
-        ],
-        width: startup_panel_width
-    };
     // Print banner
-    banner.print();
-
-    println!("{}", bottom);
-
-
-    print!("{}", "test".color("blue"));
+    println!("{}", banner.assemble());
 }
 
+fn print_startup_banner(ip: &str, port: &str, admin_port: &str) {
+    // Create a style
+    let mut style: Style = Style::new();
+    style.border.color = Color::Green;
+    style.text.content_color = Color::Cyan;
 
+    // Create startup params banner
+    let mut banner: Banner = Banner::new(&style);
+    // TODO: Remove when default width is fixed
+    banner.width = 0;
+
+    // Add params
+    banner.add_header("Startup Parameters", HeaderLevel::H1);
+    banner.add_key_value("IP Address", ip);
+    banner.add_key_value("Admin Port", admin_port);
+    banner.add_key_value("Public Port", port);
+
+    println!("{}", banner.assemble());
+}
