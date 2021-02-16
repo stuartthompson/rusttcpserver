@@ -3,3 +3,6 @@
 
 # Build output (Cargo)
 target
+
+# Log and other temp output
+/tmp
