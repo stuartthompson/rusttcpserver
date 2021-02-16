@@ -1,3 +1,4 @@
+use log::{debug, info, warn};
 use super::tcp_client_handler::{TcpClientAction, TcpClientRequestHandler};
 
 pub struct WebSocketClientRequestHandler {
@@ -16,7 +17,7 @@ impl TcpClientRequestHandler for WebSocketClientRequestHandler {
         _stream: &std::net::TcpStream,
         data: &[u8], 
         num_bytes: &usize) -> TcpClientAction {
-        println!(
+        debug!(
             "[WebSocket Client] ({0}) Received {1} bytes.",
             &self.address, num_bytes
         );
@@ -26,7 +27,7 @@ impl TcpClientRequestHandler for WebSocketClientRequestHandler {
         //     println!("Byte {0: >2} is {1: >3}: {1:0>8b}", i, data[i]);
         // }
         let content = parse_websocket_frame(data, num_bytes);
-        println!("Received: {0}", content);       
+        debug!("Received: {0}", content);       
         
         // TODO: This should be a command-parser (vs. multiple if statement blocks)
         // Check for ShutdownServer command

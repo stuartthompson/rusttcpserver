@@ -1,13 +1,14 @@
-use std::io::Write;
-use super::tcp_client_handler::{TcpClientAction, TcpClientRequestHandler};
 use super::request;
+use super::tcp_client_handler::{TcpClientAction, TcpClientRequestHandler};
+use log::{debug, warn};
+use std::io::Write;
 
 pub struct HttpClientRequestHandler {
     //pub stream: &std::net::TcpStream,
     /**
      * IP address of connected client.
      */
-    pub address: std::net::SocketAddr
+    pub address: std::net::SocketAddr,
 }
 
 impl HttpClientRequestHandler {
@@ -19,13 +20,13 @@ impl HttpClientRequestHandler {
         let resp = b"HTTP/1.1 200 OK";
         match stream.write(resp) {
             Ok(_) => {
-                println!(
+                debug!(
                     "[HTTP Client] ({0}) Sent response HTTP 200 OK",
                     self.address
                 );
             }
             Err(error) => {
-                println!(
+                debug!(
                     "[HTTP Client] ({0}) Error sending HTTP 200 OK response. {1}",
                     self.address, error
                 );
@@ -39,10 +40,12 @@ impl TcpClientRequestHandler for HttpClientRequestHandler {
      * Handles an HTTP client request.
      */
     fn handle_request(
-        self: &HttpClientRequestHandler, 
-        stream: &std::net::TcpStream, 
-        data: &[u8], num_bytes: &usize) -> TcpClientAction {
-        println!(
+        self: &HttpClientRequestHandler,
+        stream: &std::net::TcpStream,
+        data: &[u8],
+        num_bytes: &usize,
+    ) -> TcpClientAction {
+        debug!(
             "[HTTP Client] ({0}) Received {1} bytes.",
             &self.address, num_bytes
         );
@@ -60,7 +63,7 @@ impl TcpClientRequestHandler for HttpClientRequestHandler {
                 }
             }
             Err(error) => {
-                println!(
+                warn!(
                     "[HTTP Client] ({0}) Error parsing client request to UTF-8: {1}",
                     self.address, error
                 );

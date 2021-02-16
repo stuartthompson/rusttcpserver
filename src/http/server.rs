@@ -1,7 +1,7 @@
+use std::sync::mpsc::TryRecvError;
+use log::{debug, info, warn};
 use super::tcp_client_handler::{TcpClientHandler, TcpClientType};
 use crate::channel::Channel;
-use logger::{self, Log};
-use std::sync::mpsc::TryRecvError;
 
 struct TcpClient {
     pub address: std::net::SocketAddr,
@@ -28,11 +28,6 @@ impl HttpServer {
     pub fn start(self: HttpServer) {
         // Start listener thread
         std::thread::spawn(move || {
-            // Logger
-            let logger = logger::Logger {
-                source: String::from(&self.name),
-            };
-
             // Listener
             let listener = std::net::TcpListener::bind(&self.address)
                 .expect("[Server] Error binding TCP listener.");
@@ -40,14 +35,14 @@ impl HttpServer {
             // Set to non-blocking mode
             match listener.set_nonblocking(true) {
                 Ok(_) => {
-                    logger.log_color("Set to non-blocking mode.", "red");
+                    debug!("Set to non-blocking mode.");
                 }
                 Err(err) => {
-                    println!("[Server] Could not set non-blocking mode. Error: {0}", err);
+                    warn!("[Server] Could not set non-blocking mode. Error: {0}", err);
                 }
             };
 
-            println!("[Server] ({0}) listening on {1}", &self.name, &self.address);
+            debug!("[Server] ({0}) listening on {1}", &self.name, &self.address);
 
             let mut server_running: bool = true;
             let mut clients: Vec<TcpClient> = Vec::new();
@@ -90,7 +85,7 @@ impl HttpServer {
                     // Handle case where waiting for accept would become blocking
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                     Err(e) => {
-                        println!(
+                        warn!(
                             "[Server] ({0}) Error accepting client connection. Error: {1}",
                             self.name, e
                         );
@@ -101,7 +96,7 @@ impl HttpServer {
                 for client in clients.iter_mut() {
                     match client.channel.receiver.try_recv() {
                         Ok(message) => {
-                            println!(
+                            debug!(
                                 "[{0}] ({1}) Received message from client. Message: {2}",
                                 self.name, client.address, message
                             );
@@ -120,7 +115,7 @@ impl HttpServer {
                             if self.is_admin_server {
                                 // Check for shutdown command
                                 if message == "ShutdownServer" {
-                                    println!("[Server] Admin command ShutdownServer received. Notifying Shutdown.");
+                                    info!("[Server] Admin command ShutdownServer received. Notifying Shutdown.");
                                     self.server_to_main_tx
                                         .send(String::from("Shutdown"))
                                         .expect("Error sending shutdown notification to main thread.");
@@ -137,7 +132,7 @@ impl HttpServer {
                 // Check for messages from main thread
                 match self.main_to_server_rx.try_recv() {
                     Ok(message) => {
-                        println!(
+                        debug!(
                             "[Server] ({0}) Received message from main thread. Message: {1}",
                             self.name, message
                         );
@@ -159,7 +154,7 @@ impl HttpServer {
             let connected_clients = &clients.len();
             let mut disconnects = 0;
             for client in &clients {
-                println!(
+                debug!(
                     "[Server] ({0}) Sending disconnect request to client at address {1}.",
                     self.name, client.address
                 );
@@ -175,7 +170,7 @@ impl HttpServer {
                     match client.channel.receiver.try_recv() {
                         Ok(message) => {
                             if message == "Disconnected" {
-                                println!(
+                                debug!(
                                     "[{0}] Client @ {1} disconnected.",
                                     self.name, client.address
                                 );
@@ -186,7 +181,7 @@ impl HttpServer {
                         Err(TryRecvError::Disconnected) => {}
                     }
                 }
-                println!("Waiting for client disconnects.");
+                debug!("Waiting for client disconnects.");
                 std::thread::sleep(std::time::Duration::from_millis(1000));
             }
 
