@@ -1,19 +1,16 @@
-use std::sync::mpsc::Sender;
 use crate::client_handler::ClientHandler;
-use crate::http::{Request, Action};
+use crate::http::{Action, Request};
 use log::debug;
+use std::sync::mpsc::Sender;
 
 pub struct MyServerImpl {
     name: String,
-    to_server_tx: Sender<Request>
+    to_server_tx: Sender<Request>,
 }
 
 impl MyServerImpl {
     pub fn new(name: String, to_server_tx: Sender<Request>) -> MyServerImpl {
-        MyServerImpl {
-            name,
-            to_server_tx,
-        }
+        MyServerImpl { name, to_server_tx }
     }
 }
 
@@ -36,6 +33,10 @@ impl ClientHandler for MyServerImpl {
         );
 
         // Echo the message back
+        self.to_server_tx.send(Request {
+            client_id: String::from(client_id),
+            action: Action::SendMessage(String::from(message)),
+        }).expect("Error sending request to server.");
         //self.to_server_tx.send(String::from("Send"));
     }
 }

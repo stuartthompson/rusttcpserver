@@ -1,6 +1,6 @@
 use super::tcp_client_handler::{TcpClientHandler, TcpClientType};
 use crate::client_handler::ClientHandler;
-use log::{debug, info, warn};
+use log::{debug, warn};
 use std::sync::mpsc::{channel, TryRecvError, Sender, Receiver};
 
 struct TcpClient {
@@ -12,11 +12,12 @@ struct TcpClient {
 }
 
 pub struct Request {
-    client_id: String
+    pub client_id: String,
+    pub action: Action
 }
 
 pub enum Action {
-    SendMessage,
+    SendMessage(String),
     Stop
 }
 
@@ -118,14 +119,6 @@ impl TcpServer {
                                 client.client_type = TcpClientType::WebSocket;
                             }
 
-                            // Check for shutdown command
-                            else if message == "ShutdownServer" {
-                                info!("[Server] Admin command ShutdownServer received. Notifying Shutdown.");
-                                self.server_to_main_tx
-                                    .send(String::from("Shutdown"))
-                                    .expect("Error sending shutdown notification to main thread.");
-                            }
-
                             else {
                                 // Notify external implementation handler of message
                                 (*self.handler).on_message_received(&client.address.to_string(), &message);
@@ -139,27 +132,24 @@ impl TcpServer {
                 }
 
                 // Check for messages from main thread
-                // match self.main_to_server_rx.try_recv() {
-                //     Ok(message) => {
-                //         debug!(
-                //             "[Server] ({0}) Received message from main thread. Message: {1}",
-                //             self.name, message
-                //         );
-                //         if message == "Send" {
-                //             // TODO: Look up correct client. Also, send actual message (need to upgrade mpsc channel type)
-                //             debug!("[Server] ({0}) Instructing client at {1} to send message.", self.name, clients[0].address);
-                //             clients[0].to_client_tx.send(String::from("Send")).expect("Error sending message to client.");
-                //         }
-                //         if message == "StopServer" {
-                //             // Kill this server
-                //             server_running = false;
-                //         }
-                //     }
-                //     Err(TryRecvError::Empty) => {}
-                //     Err(TryRecvError::Disconnected) => {
-                //         panic!("[Server] Error reading from main thread receiver. Channel disconnected")
-                //     }
-                // }
+                match self.main_to_server_rx.try_recv() {
+                    Ok(request) => {
+                        match request.action {
+                            Action::SendMessage(message) => {
+                                clients[0].to_client_tx.send(String::from(message)).expect("Error sending message to client.");
+                            }
+                            Action::Stop => {
+                                // Stop the server
+                                debug!("[Server {0}] Received request to stop server.", self.name);
+                                server_running = false;
+                            }
+                        }
+                    }
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => {
+                        panic!("[Server] Error reading from main thread receiver. Channel disconnected")
+                    }
+                }
 
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
