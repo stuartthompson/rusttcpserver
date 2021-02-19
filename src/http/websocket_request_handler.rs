@@ -24,9 +24,9 @@ impl TcpClientRequestHandler for WebSocketClientRequestHandler {
         );
 
         // TODO: Move the following (commented) code to a trait for log display
-        // for i in 0..size {
-        //     println!("Byte {0: >2} is {1: >3}: {1:0>8b}", i, data[i]);
-        // }
+        for i in 0..*num_bytes {
+            println!("Byte {0: >2} is {1: >3}: {1:0>8b}", i, data[i]);
+        }
         let content = parse_websocket_frame(data, num_bytes);
         debug!("Received: {0}", content);
         
@@ -42,14 +42,21 @@ impl TcpClientRequestHandler for WebSocketClientRequestHandler {
     fn send_response(
         self: &WebSocketClientRequestHandler, 
         stream: &mut std::net::TcpStream,
-        data: &[u8]) {
-        stream.write(data);
+        message: String) {
+        // Build websocket frame
+        let data: Vec<u8> = build_websocket_frame(&message.to_string());
+
+        for i in 0..data.len() {
+            println!("Byte {0: >2} is {1: >3}: {1:0>8b}", i, data[i]);
+        }
+
+        stream.write(&data).expect("Error writing message {0} to stream.");
     }
 }
 
-/*
- * Parses a websocket frame.
- */
+/// Returns the contents of a websocket frame.
+/// 
+/// WebSocket frame layout: https://tools.ietf.org/html/rfc6455#section-5.2
 fn parse_websocket_frame(content: &[u8], size: &usize) -> String {
     let _fin_bit: bool = (content[0] & 0b10000000) != 0; // Bit 0 has fin bit
     let _rsv1: bool = (content[0] & 0b01000000) != 0; // Bit 1 contains reserved flag 1
@@ -78,44 +85,34 @@ fn parse_websocket_frame(content: &[u8], size: &usize) -> String {
 
 /// Returns a byte-array containing a websocket frame.
 /// 
+/// WebSocket frame layout: https://tools.ietf.org/html/rfc6455#section-5.2
+/// 
 /// # Arguments
 /// 
 /// * `content` - The content of the websocket frame.
 fn build_websocket_frame(content: &str) -> Vec<u8> {
     let mut byte1: u8 = 0; // Flags and opcode
-    let mut byte2: u8; // Mask and payload length
-
-    // TODO: Generate masking key randomly and according to websocket standards guidelines for randomness and entropy
-    //  See: https://tools.ietf.org/html/rfc6455#section-5.3
-    let masking_key: [u8;4] = [72, 14, 167, 84];
+    let byte2: u8; // Mask and payload length
 
     // Set op code to 1 (text)
-    byte1 |= 0b0000_0001;
+    byte1 |= 0b1000_0001;
     
     // TODO: Handle payloads longer than 126 bytes
     // Set payload length
     byte2 = content.len() as u8;
 
-    // Set mask flag to 1
-    byte2 |= 0b1000_0000;
-
-    let mut masked: Vec<u8> = Vec::new();
-    let content_bytes = content.as_bytes();
-    for i in 0..content.len() {
-        masked.push(content_bytes[i] ^ masking_key[i % 4]);
-    }
-
     let mut result: Vec<u8> = Vec::new();
 
     result.push(byte1);
     result.push(byte2);
-    result.push(masking_key[0]);
-    result.push(masking_key[1]);
-    result.push(masking_key[2]);
-    result.push(masking_key[3]);
+    // result.push(masking_key[0]);
+    // result.push(masking_key[1]);
+    // result.push(masking_key[2]);
+    // result.push(masking_key[3]);
     
-    for i in 0..masked.len() {
-        result.push(masked[i]);
+    let c = content.as_bytes();
+    for i in 0..content.len() {
+        result.push(c[i]);
     }
 
     result

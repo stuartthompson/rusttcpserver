@@ -38,7 +38,7 @@ pub trait TcpClientRequestHandler {
     fn send_response(
         self: &Self, 
         stream: &mut std::net::TcpStream,
-        data: &[u8]);
+        message: String);
 }
 
 impl TcpClientHandler {
@@ -80,6 +80,9 @@ impl TcpClientHandler {
                 &self.address
             );
 
+            debug!("[Client at {0}] Setting stream to non-blocking.", self.address);
+            self.stream.set_nonblocking(true).expect("Error setting stream to non-blocking.");
+
             // Mark client as connected
             self.is_connected = true;
             self.to_server_tx
@@ -110,6 +113,8 @@ impl TcpClientHandler {
                 // Check for messages from server
                 match self.from_server_rx.try_recv() {
                     Ok(message) => {
+                        debug!("[Client @ {0}] Received message from server: {1}.", self.address, message);
+
                         if message == "Disconnect" {
                             debug!(
                                 "[Client @ {0}] Received notification from server to disconnect.",
@@ -124,7 +129,7 @@ impl TcpClientHandler {
 
                         if message == "Send" {
                             debug!("[Client @ {0}] Received notification from server to send a message.", self.address);
-                            // (*self.request_handler).send_response(&self.stream, message.as_bytes());
+                            (*self.request_handler).send_response(&mut self.stream, String::from("Bazinga!"));
                         }
                     }
                     Err(TryRecvError::Empty) => {}

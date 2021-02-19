@@ -76,7 +76,7 @@ impl TcpClientRequestHandler for HttpClientRequestHandler {
     fn send_response(
         self: &HttpClientRequestHandler, 
         stream: &mut std::net::TcpStream,
-        data: &[u8]) {
-        stream.write(data);
+        message: String) {
+        stream.write(message.to_string().as_bytes()).expect("Error sending message to client.");
     }
 }

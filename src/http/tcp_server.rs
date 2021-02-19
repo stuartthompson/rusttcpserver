@@ -138,7 +138,8 @@ impl TcpServer {
                         );
                         if message == "Send" {
                             // TODO: Look up correct client. Also, send actual message (need to upgrade mpsc channel type)
-                            clients[0].to_client_tx.send(String::from("Send"));
+                            debug!("[Server] ({0}) Instructing client at {1} to send message.", self.name, clients[0].address);
+                            clients[0].to_client_tx.send(String::from("Send")).expect("Error sending message to client.");
                         }
                         if message == "StopServer" {
                             // Kill this server
