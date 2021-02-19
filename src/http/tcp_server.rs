@@ -119,8 +119,7 @@ impl TcpServer {
 
                             else {
                                 // Notify external implementation handler of message
-                                let h: &Box<dyn ClientHandler + Send> = &self.handler;
-                                (*h).on_message_received(&client.address.to_string(), &message);
+                                (*self.handler).on_message_received(&client.address.to_string(), &message);
                             }
                         }
                         Err(TryRecvError::Empty) => {}
