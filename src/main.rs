@@ -30,8 +30,8 @@ fn main() {
     print_title_banner();
 
     // Verify startup arguments
-    if std::env::args().len() != 4 {
-        println!("Usage: rusttcpclient ip port adminport");
+    if std::env::args().len() != 3 {
+        println!("Usage: rusttcpclient ip port");
         return;
     }
 
@@ -42,11 +42,8 @@ fn main() {
     let port = std::env::args()
         .nth(2)
         .expect("Expected argument 2 to be port.");
-    let admin_port = std::env::args()
-        .nth(3)
-        .expect("Expected argument 3 to be admin port.");
-
-    print_startup_banner(&ip, &port, &admin_port);
+    
+    print_startup_banner(&ip, &port);
 
     // Channel to communicate with the servers
     let (main_to_server_tx, main_to_server_rx) = std::sync::mpsc::channel::<String>();
@@ -131,7 +128,7 @@ fn print_title_banner() {
     info!("{}", banner.assemble());
 }
 
-fn print_startup_banner(ip: &str, port: &str, admin_port: &str) {
+fn print_startup_banner(ip: &str, port: &str) {
     // Create a style
     let mut style: Style = Style::new();
     style.border.color = Color::Green;
@@ -145,8 +142,7 @@ fn print_startup_banner(ip: &str, port: &str, admin_port: &str) {
     // Add params
     banner.add_header("Startup Parameters", HeaderLevel::H1);
     banner.add_key_value("IP Address", ip);
-    banner.add_key_value("Admin Port", admin_port);
-    banner.add_key_value("Public Port", port);
+    banner.add_key_value("Port", port);
 
     info!("{}", banner.assemble());
 }

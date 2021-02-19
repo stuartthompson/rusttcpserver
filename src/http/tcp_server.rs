@@ -110,15 +110,12 @@ impl TcpServer {
                                 client.client_type = TcpClientType::WebSocket;
                             }
 
-                            // Parse admin commands (if this is the admin server)
-                            if self.is_admin_server {
-                                // Check for shutdown command
-                                if message == "ShutdownServer" {
-                                    info!("[Server] Admin command ShutdownServer received. Notifying Shutdown.");
-                                    self.server_to_main_tx
-                                        .send(String::from("Shutdown"))
-                                        .expect("Error sending shutdown notification to main thread.");
-                                }
+                            // Check for shutdown command
+                            if message == "ShutdownServer" {
+                                info!("[Server] Admin command ShutdownServer received. Notifying Shutdown.");
+                                self.server_to_main_tx
+                                    .send(String::from("Shutdown"))
+                                    .expect("Error sending shutdown notification to main thread.");
                             }
                         }
                         Err(TryRecvError::Empty) => {}

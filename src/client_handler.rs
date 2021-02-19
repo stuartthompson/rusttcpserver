@@ -1,5 +1,5 @@
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Sender, Receiver};
 
 pub trait ClientHandler {
-    fn on_client_connected(self: &Self, sender: Sender<String> receiver: Receiver<String>);
+    fn on_client_connected(self: &Self, sender: Sender<String>, receiver: Receiver<String>);
 }
