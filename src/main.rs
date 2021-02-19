@@ -10,7 +10,7 @@ mod extimpl;
 
 use banner::{Banner, Color, HeaderLevel, Style};
 use extimpl::MyServerImpl;
-use http::TcpServer;
+use http::{TcpServer, Request, Action};
 use log::{debug, info, LevelFilter, SetLoggerError};
 use log4rs::{
     append::{
@@ -47,7 +47,7 @@ fn main() {
     print_startup_banner(&ip, &port);
 
     // Channel to communicate with the servers
-    let (main_to_server_tx, main_to_server_rx) = std::sync::mpsc::channel::<String>();
+    let (main_to_server_tx, main_to_server_rx) = std::sync::mpsc::channel::<Request>();
     let (server_to_main_tx, server_to_main_rx) = std::sync::mpsc::channel::<String>();
 
     // Create client handler

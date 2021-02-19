@@ -11,6 +11,15 @@ struct TcpClient {
     pub from_client_rx: Receiver<String>
 }
 
+pub struct Request {
+    client_id: String
+}
+
+pub enum Action {
+    SendMessage,
+    Stop
+}
+
 /**
  * Represents a TCP server.
  */
@@ -18,7 +27,7 @@ pub struct TcpServer {
     pub address: String,
     pub name: String,
     pub handler: Box<dyn ClientHandler + Send>,
-    pub main_to_server_rx: Receiver<String>,
+    pub main_to_server_rx: Receiver<Request>,
     pub server_to_main_tx: Sender<String>,
 }
 
@@ -130,27 +139,27 @@ impl TcpServer {
                 }
 
                 // Check for messages from main thread
-                match self.main_to_server_rx.try_recv() {
-                    Ok(message) => {
-                        debug!(
-                            "[Server] ({0}) Received message from main thread. Message: {1}",
-                            self.name, message
-                        );
-                        if message == "Send" {
-                            // TODO: Look up correct client. Also, send actual message (need to upgrade mpsc channel type)
-                            debug!("[Server] ({0}) Instructing client at {1} to send message.", self.name, clients[0].address);
-                            clients[0].to_client_tx.send(String::from("Send")).expect("Error sending message to client.");
-                        }
-                        if message == "StopServer" {
-                            // Kill this server
-                            server_running = false;
-                        }
-                    }
-                    Err(TryRecvError::Empty) => {}
-                    Err(TryRecvError::Disconnected) => {
-                        panic!("[Server] Error reading from main thread receiver. Channel disconnected")
-                    }
-                }
+                // match self.main_to_server_rx.try_recv() {
+                //     Ok(message) => {
+                //         debug!(
+                //             "[Server] ({0}) Received message from main thread. Message: {1}",
+                //             self.name, message
+                //         );
+                //         if message == "Send" {
+                //             // TODO: Look up correct client. Also, send actual message (need to upgrade mpsc channel type)
+                //             debug!("[Server] ({0}) Instructing client at {1} to send message.", self.name, clients[0].address);
+                //             clients[0].to_client_tx.send(String::from("Send")).expect("Error sending message to client.");
+                //         }
+                //         if message == "StopServer" {
+                //             // Kill this server
+                //             server_running = false;
+                //         }
+                //     }
+                //     Err(TryRecvError::Empty) => {}
+                //     Err(TryRecvError::Disconnected) => {
+                //         panic!("[Server] Error reading from main thread receiver. Channel disconnected")
+                //     }
+                // }
 
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }

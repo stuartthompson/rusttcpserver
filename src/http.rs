@@ -5,4 +5,4 @@ pub mod request;
 pub mod response;
 mod tcp_server;
 
-pub use tcp_server::TcpServer;
+pub use tcp_server::{TcpServer, Request, Action};

@@ -1,14 +1,15 @@
 use std::sync::mpsc::Sender;
 use crate::client_handler::ClientHandler;
+use crate::http::{Request, Action};
 use log::debug;
 
 pub struct MyServerImpl {
     name: String,
-    to_server_tx: Sender<String>
+    to_server_tx: Sender<Request>
 }
 
 impl MyServerImpl {
-    pub fn new(name: String, to_server_tx: Sender<String>) -> MyServerImpl {
+    pub fn new(name: String, to_server_tx: Sender<Request>) -> MyServerImpl {
         MyServerImpl {
             name,
             to_server_tx,
@@ -35,6 +36,6 @@ impl ClientHandler for MyServerImpl {
         );
 
         // Echo the message back
-        self.to_server_tx.send(String::from("Send"));
+        //self.to_server_tx.send(String::from("Send"));
     }
 }
