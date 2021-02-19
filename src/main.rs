@@ -5,8 +5,8 @@ extern crate log4rs;
 extern crate sha1;
 
 mod channel;
+mod client_handler;
 mod http;
-mod server;
 
 use banner::{Banner, Color, HeaderLevel, Style};
 use http::TcpServer;
@@ -49,52 +49,27 @@ fn main() {
     print_startup_banner(&ip, &port, &admin_port);
 
     // Channel to communicate with the servers
-    let (main_to_client_tx, main_to_client_rx) = std::sync::mpsc::channel::<String>();
-    let (client_to_main_tx, client_to_main_rx) = std::sync::mpsc::channel::<String>();
-    let (main_to_admin_tx, main_to_admin_rx) = std::sync::mpsc::channel::<String>();
-    let (admin_to_main_tx, admin_to_main_rx) = std::sync::mpsc::channel::<String>();
-
-    // Start client server
-    let client_address = format!("{0}:{1}", &ip, &port);
-    let client_server: TcpServer = TcpServer {
-        address: client_address,
+    let (main_to_server_tx, main_to_server_rx) = std::sync::mpsc::channel::<String>();
+    let (server_to_main_tx, server_to_main_rx) = std::sync::mpsc::channel::<String>();
+    // Create server
+    let server_address = format!("{0}:{1}", &ip, &port);
+    let server: TcpServer = TcpServer {
+        address: server_address,
         name: String::from("Client Server"),
-        is_admin_server: false,
-        main_to_server_rx: main_to_client_rx,
-        server_to_main_tx: client_to_main_tx,
+        main_to_server_rx: main_to_server_rx,
+        server_to_main_tx: server_to_main_tx,
     };
-    client_server.start();
-
-    // Start admin server
-    let admin_address = format!("{0}:{1}", &ip, &admin_port);
-    let admin_server: TcpServer = TcpServer {
-        address: admin_address,
-        name: String::from("Admin Server"),
-        is_admin_server: true,
-        main_to_server_rx: main_to_admin_rx,
-        server_to_main_tx: admin_to_main_tx,
-    };
-    admin_server.start();
+    // Start server
+    server.start();
 
     // Server running flag
     let mut server_running = true;
 
     while server_running {
-        // Check for messages from client server
-        match client_to_main_rx.try_recv() {
+        // Check for messages from server
+        match server_to_main_rx.try_recv() {
             Ok(message) => {
-                debug!("[Main] Client server said: {0}", message);
-            }
-            Err(TryRecvError::Empty) => {}
-            Err(TryRecvError::Disconnected) => {
-                panic!("[Main] Error receiving on client server channel. Channel disconnected")
-            }
-        }
-
-        // Check for messages from admin server
-        match admin_to_main_rx.try_recv() {
-            Ok(message) => {
-                debug!("[Main] Admin server said: {0}", message);
+                debug!("[Main] Server said: {0}", message);
 
                 // Check for shutdown
                 if message == "Shutdown" {
@@ -103,59 +78,37 @@ fn main() {
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
-                panic!("[Main] Error receiving on admin server channel. Channel disconnected")
+                panic!("[Main] Error receiving on server channel. Channel disconnected")
             }
         }
 
         std::thread::sleep(std::time::Duration::from_millis(1000));
     }
 
-    // Tell servers to shut down
-    info!("[Main] Sending shutdown message to client and admin servers.");
-    main_to_client_tx
+    // Tell server to shut down
+    info!("[Main] Sending shutdown message to server.");
+    main_to_server_tx
         .send(String::from("StopServer"))
-        .expect("[Main] Error communicating shutdown to client server.");
-    main_to_admin_tx
-        .send(String::from("StopServer"))
-        .expect("[Main] Error communicating shutdown to admin server.");
+        .expect("[Main] Error communicating shutdown to server.");
 
-    let mut client_server_running = true;
-    let mut admin_server_running = true;
-
-    // Wait for client and admin servers to stop
-    while client_server_running || admin_server_running {
-        if client_server_running {
-            match client_to_main_rx.try_recv() {
-                Ok(message) => {
-                    if message == "ServerStopped" {
-                        client_server_running = false;
-                        debug!("[Main] Client server has stopped.");
-                    }
-                }
-                Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => {
-                    debug!("[Main] Client server has disconnected.");
+    let mut server_shutting_down = true;
+    // Wait for server to shut down
+    while server_shutting_down {
+        match server_to_main_rx.try_recv() {
+            Ok(message) => {
+                if message == "ServerStopped" {
+                    server_shutting_down = false;
+                    debug!("[Main] Client server has stopped.");
                 }
             }
-        }
-
-        if admin_server_running {
-            match admin_to_main_rx.try_recv() {
-                Ok(message) => {
-                    if message == "ServerStopped" {
-                        admin_server_running = false;
-                        debug!("[Main] Admin server has stopped.");
-                    }
-                }
-                Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => {
-                    debug!("[Main] Admin server has disconnected.");
-                }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => {
+                debug!("[Main] Client server has disconnected.");
             }
         }
     }
 
-    info!("[Main] All servers stopped. Quitting.");
+    info!("[Main] Server stopped. Quitting.");
     std::thread::sleep(std::time::Duration::from_millis(3000));
 }
 
@@ -208,7 +161,7 @@ fn init_logging() -> Result<(), SetLoggerError> {
     // Build a stdout logger
     let stdout = ConsoleAppender::builder()
         .target(Target::Stdout)
-        .encoder(Box::new(PatternEncoder::new("{m}\n",)))
+        .encoder(Box::new(PatternEncoder::new("{m}\n")))
         .build();
 
     // Logging to log file.

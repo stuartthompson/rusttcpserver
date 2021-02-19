@@ -16,7 +16,6 @@ struct TcpClient {
 pub struct TcpServer {
     pub address: String,
     pub name: String,
-    pub is_admin_server: bool,
     pub main_to_server_rx: std::sync::mpsc::Receiver<String>,
     pub server_to_main_tx: std::sync::mpsc::Sender<String>,
 }
