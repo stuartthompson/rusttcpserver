@@ -72,4 +72,11 @@ impl TcpClientRequestHandler for HttpClientRequestHandler {
 
         return TcpClientAction::None;
     }
+
+    fn send_response(
+        self: &HttpClientRequestHandler, 
+        stream: &mut std::net::TcpStream,
+        data: &[u8]) {
+        stream.write(data);
+    }
 }

@@ -34,6 +34,11 @@ pub trait TcpClientRequestHandler {
         stream: &std::net::TcpStream, 
         data: &[u8], 
         num_bytes: &usize) -> TcpClientAction;
+
+    fn send_response(
+        self: &Self, 
+        stream: &mut std::net::TcpStream,
+        data: &[u8]);
 }
 
 impl TcpClientHandler {
@@ -115,6 +120,11 @@ impl TcpClientHandler {
                                 .expect("Failed to shutdown client.");
                             // Mark the client as disconnected
                             self.is_connected = false;
+                        }
+
+                        if message == "Send" {
+                            debug!("[Client @ {0}] Received notification from server to send a message.", self.address);
+                            // (*self.request_handler).send_response(&self.stream, message.as_bytes());
                         }
                     }
                     Err(TryRecvError::Empty) => {}

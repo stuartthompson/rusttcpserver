@@ -1,3 +1,4 @@
+use std::io::Write;
 use log::{debug};
 use super::tcp_client_handler::{TcpClientAction, TcpClientRequestHandler};
 
@@ -37,6 +38,13 @@ impl TcpClientRequestHandler for WebSocketClientRequestHandler {
 
         return TcpClientAction::HandleMessage(content);
     }
+
+    fn send_response(
+        self: &WebSocketClientRequestHandler, 
+        stream: &mut std::net::TcpStream,
+        data: &[u8]) {
+        stream.write(data);
+    }
 }
 
 /*
@@ -66,4 +74,49 @@ fn parse_websocket_frame(content: &[u8], size: &usize) -> String {
     let result = std::str::from_utf8(&decoded).expect("Error decoding websocket payload.");
     
     return String::from(result);
+}
+
+/// Returns a byte-array containing a websocket frame.
+/// 
+/// # Arguments
+/// 
+/// * `content` - The content of the websocket frame.
+fn build_websocket_frame(content: &str) -> Vec<u8> {
+    let mut byte1: u8 = 0; // Flags and opcode
+    let mut byte2: u8; // Mask and payload length
+
+    // TODO: Generate masking key randomly and according to websocket standards guidelines for randomness and entropy
+    //  See: https://tools.ietf.org/html/rfc6455#section-5.3
+    let masking_key: [u8;4] = [72, 14, 167, 84];
+
+    // Set op code to 1 (text)
+    byte1 |= 0b0000_0001;
+    
+    // TODO: Handle payloads longer than 126 bytes
+    // Set payload length
+    byte2 = content.len() as u8;
+
+    // Set mask flag to 1
+    byte2 |= 0b1000_0000;
+
+    let mut masked: Vec<u8> = Vec::new();
+    let content_bytes = content.as_bytes();
+    for i in 0..content.len() {
+        masked.push(content_bytes[i] ^ masking_key[i % 4]);
+    }
+
+    let mut result: Vec<u8> = Vec::new();
+
+    result.push(byte1);
+    result.push(byte2);
+    result.push(masking_key[0]);
+    result.push(masking_key[1]);
+    result.push(masking_key[2]);
+    result.push(masking_key[3]);
+    
+    for i in 0..masked.len() {
+        result.push(masked[i]);
+    }
+
+    result
 }

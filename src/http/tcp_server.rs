@@ -72,7 +72,7 @@ impl TcpServer {
                             client_type: TcpClientType::Http,
                             is_connected: false,
                             to_client_tx: server_to_client_tx,
-                            from_client_rx: client_to_server_rx,
+                            from_client_rx: client_to_server_rx
                         };
 
                         &clients.push(client);
@@ -99,9 +99,9 @@ impl TcpServer {
                             if message == "Connected" {
                                 // TODO: Mark the client as connected
                                 client.is_connected = true;
+
                                 // Notify the handler (external implementation handler) of the new client
-                                let h: &Box<dyn ClientHandler + Send> = &self.handler;
-                                (*h).on_client_connected(&client.address.to_string(), &client.to_client_tx);
+                                (*self.handler).on_client_connected(&client.address.to_string());
                             }
                             
                             else if message == "Upgrade to WebSocket" {
@@ -136,6 +136,10 @@ impl TcpServer {
                             "[Server] ({0}) Received message from main thread. Message: {1}",
                             self.name, message
                         );
+                        if message == "Send" {
+                            // TODO: Look up correct client. Also, send actual message (need to upgrade mpsc channel type)
+                            clients[0].to_client_tx.send(String::from("Send"));
+                        }
                         if message == "StopServer" {
                             // Kill this server
                             server_running = false;

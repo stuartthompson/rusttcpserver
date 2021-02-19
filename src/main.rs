@@ -46,12 +46,13 @@ fn main() {
     
     print_startup_banner(&ip, &port);
 
-    // Create client handler
-    let my_server: MyServerImpl = MyServerImpl::new(String::from("MyServer"));
-
     // Channel to communicate with the servers
     let (main_to_server_tx, main_to_server_rx) = std::sync::mpsc::channel::<String>();
     let (server_to_main_tx, server_to_main_rx) = std::sync::mpsc::channel::<String>();
+
+    // Create client handler
+    let my_server: MyServerImpl = MyServerImpl::new(String::from("MyServer"), main_to_server_tx);
+
     // Create server
     let server_address = format!("{0}:{1}", &ip, &port);
     let server: TcpServer = TcpServer {
@@ -89,9 +90,9 @@ fn main() {
 
     // Tell server to shut down
     info!("[Main] Sending shutdown message to server.");
-    main_to_server_tx
-        .send(String::from("StopServer"))
-        .expect("[Main] Error communicating shutdown to server.");
+    // main_to_server_tx
+    //     .send(String::from("StopServer"))
+    //     .expect("[Main] Error communicating shutdown to server.");
 
     let mut server_shutting_down = true;
     // Wait for server to shut down
