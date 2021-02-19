@@ -11,9 +11,9 @@ struct TcpClient {
 }
 
 /**
- * Represents an HTTP server.
+ * Represents a TCP server.
  */
-pub struct HttpServer {
+pub struct TcpServer {
     pub address: String,
     pub name: String,
     pub is_admin_server: bool,
@@ -21,11 +21,11 @@ pub struct HttpServer {
     pub server_to_main_tx: std::sync::mpsc::Sender<String>,
 }
 
-impl HttpServer {
+impl TcpServer {
     /**
      * Starts an HTTP server.
      */
-    pub fn start(self: HttpServer) {
+    pub fn start(self: TcpServer) {
         // Start listener thread
         std::thread::spawn(move || {
             // Listener

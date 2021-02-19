@@ -3,4 +3,6 @@ pub mod http_request_handler;
 pub mod websocket_request_handler;
 pub mod request;
 pub mod response;
-pub mod server;
+mod tcp_server;
+
+pub use tcp_server::TcpServer;

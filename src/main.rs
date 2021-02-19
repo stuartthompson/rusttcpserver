@@ -6,10 +6,11 @@ extern crate sha1;
 
 mod channel;
 mod http;
+mod server;
 
 use banner::{Banner, Color, HeaderLevel, Style};
-use http::server::HttpServer;
-use log::{debug, error, info, trace, warn, LevelFilter, SetLoggerError};
+use http::TcpServer;
+use log::{debug, info, LevelFilter, SetLoggerError};
 use log4rs::{
     append::{
         console::{ConsoleAppender, Target},
@@ -55,7 +56,7 @@ fn main() {
 
     // Start client server
     let client_address = format!("{0}:{1}", &ip, &port);
-    let client_server: HttpServer = HttpServer {
+    let client_server: TcpServer = TcpServer {
         address: client_address,
         name: String::from("Client Server"),
         is_admin_server: false,
@@ -66,7 +67,7 @@ fn main() {
 
     // Start admin server
     let admin_address = format!("{0}:{1}", &ip, &admin_port);
-    let admin_server: HttpServer = HttpServer {
+    let admin_server: TcpServer = TcpServer {
         address: admin_address,
         name: String::from("Admin Server"),
         is_admin_server: true,
