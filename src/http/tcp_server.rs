@@ -1,13 +1,14 @@
-use std::sync::mpsc::TryRecvError;
-use log::{debug, info, warn};
 use super::tcp_client_handler::{TcpClientHandler, TcpClientType};
-use crate::channel::Channel;
+use crate::client_handler::ClientHandler;
+use log::{debug, info, warn};
+use std::sync::mpsc::{channel, TryRecvError, Sender, Receiver};
 
 struct TcpClient {
     pub address: std::net::SocketAddr,
     pub client_type: TcpClientType,
     pub is_connected: bool,
-    pub channel: Channel<String>,
+    pub to_client_tx: Sender<String>,
+    pub from_client_rx: Receiver<String>
 }
 
 /**
@@ -16,8 +17,9 @@ struct TcpClient {
 pub struct TcpServer {
     pub address: String,
     pub name: String,
-    pub main_to_server_rx: std::sync::mpsc::Receiver<String>,
-    pub server_to_main_tx: std::sync::mpsc::Sender<String>,
+    pub handler: Box<dyn ClientHandler + Send>,
+    pub main_to_server_rx: Receiver<String>,
+    pub server_to_main_tx: Sender<String>,
 }
 
 impl TcpServer {
@@ -51,24 +53,17 @@ impl TcpServer {
                 match listener.accept() {
                     Ok((stream, address)) => {
                         let (client_to_server_tx, client_to_server_rx) =
-                            std::sync::mpsc::channel::<String>();
+                            channel::<String>();
                         let (server_to_client_tx, server_to_client_rx) =
-                            std::sync::mpsc::channel::<String>();
-
-                        let client_channel = Channel {
-                            sender: client_to_server_tx,
-                            receiver: server_to_client_rx,
-                        };
-                        let server_channel = Channel {
-                            sender: server_to_client_tx,
-                            receiver: client_to_server_rx,
-                        };
+                            channel::<String>();
+                        
                         // Hand off to a new TCP client handler
                         TcpClientHandler::handle_new_client(
                             stream,
                             address,
                             TcpClientType::Http,
-                            client_channel,
+                            client_to_server_tx,
+                            server_to_client_rx
                         );
 
                         // Define a tracking client (used by the server to passively keep track of the client)
@@ -76,7 +71,8 @@ impl TcpServer {
                             address: address,
                             client_type: TcpClientType::Http,
                             is_connected: false,
-                            channel: server_channel,
+                            to_client_tx: server_to_client_tx,
+                            from_client_rx: client_to_server_rx,
                         };
 
                         &clients.push(client);
@@ -93,7 +89,7 @@ impl TcpServer {
 
                 // Check for notifications from clients
                 for client in clients.iter_mut() {
-                    match client.channel.receiver.try_recv() {
+                    match client.from_client_rx.try_recv() {
                         Ok(message) => {
                             debug!(
                                 "[{0}] ({1}) Received message from client. Message: {2}",
@@ -103,19 +99,28 @@ impl TcpServer {
                             if message == "Connected" {
                                 // TODO: Mark the client as connected
                                 client.is_connected = true;
+                                // Notify the handler (external implementation handler) of the new client
+                                let h: &Box<dyn ClientHandler + Send> = &self.handler;
+                                (*h).on_client_connected(&client.address.to_string(), &client.to_client_tx);
                             }
-
-                            if message == "Upgrade to WebSocket" {
+                            
+                            else if message == "Upgrade to WebSocket" {
                                 // ** UPGRADE THE HANDLER TO WEBSOCKET **
                                 client.client_type = TcpClientType::WebSocket;
                             }
 
                             // Check for shutdown command
-                            if message == "ShutdownServer" {
+                            else if message == "ShutdownServer" {
                                 info!("[Server] Admin command ShutdownServer received. Notifying Shutdown.");
                                 self.server_to_main_tx
                                     .send(String::from("Shutdown"))
                                     .expect("Error sending shutdown notification to main thread.");
+                            }
+
+                            else {
+                                // Notify external implementation handler of message
+                                let h: &Box<dyn ClientHandler + Send> = &self.handler;
+                                (*h).on_message_received(&client.address.to_string(), &message);
                             }
                         }
                         Err(TryRecvError::Empty) => {}
@@ -155,15 +160,14 @@ impl TcpServer {
                     self.name, client.address
                 );
                 client
-                    .channel
-                    .sender
+                    .to_client_tx
                     .send(String::from("Disconnect"))
                     .expect("[Server] ({0}) Error telling client to disconnect.");
             }
 
             while connected_clients > &disconnects {
                 for client in &clients {
-                    match client.channel.receiver.try_recv() {
+                    match client.from_client_rx.try_recv() {
                         Ok(message) => {
                             if message == "Disconnected" {
                                 debug!(

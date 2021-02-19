@@ -1,7 +1,6 @@
 use std::io::{Read, Write};
-use std::sync::mpsc::TryRecvError;
+use std::sync::mpsc::{TryRecvError, Sender, Receiver};
 use log::{debug, warn};
-use crate::channel::Channel;
 use super::response;
 use super::http_request_handler::HttpClientRequestHandler;
 use super::websocket_request_handler::WebSocketClientRequestHandler;
@@ -11,7 +10,8 @@ pub struct TcpClientHandler {
     is_connected: bool,
     client_type: TcpClientType,
     stream: std::net::TcpStream,
-    server_channel: Channel<String>,
+    to_server_tx: Sender<String>,
+    from_server_rx: Receiver<String>,
     request_handler: Box<dyn TcpClientRequestHandler + Send>
 }
 
@@ -22,6 +22,7 @@ pub enum TcpClientType {
 
 pub enum TcpClientAction {
     None,
+    HandleMessage(String),
     CloseConnection,
     UpgradeToWebSocket(String),
     RequestServerShutdown
@@ -43,7 +44,8 @@ impl TcpClientHandler {
         stream: std::net::TcpStream,
         address: std::net::SocketAddr,
         client_type: TcpClientType,
-        server_channel: Channel<String>
+        to_server_tx: Sender<String>,
+        from_server_rx: Receiver<String>,
     ) {
         // Create the TCP client handler for this client
         let handler = TcpClientHandler {
@@ -51,7 +53,8 @@ impl TcpClientHandler {
             address: address,
             is_connected: false,
             client_type: client_type,
-            server_channel: server_channel,
+            to_server_tx,
+            from_server_rx,
             request_handler: Box::new(HttpClientRequestHandler {
                 address: address
             })
@@ -74,8 +77,7 @@ impl TcpClientHandler {
 
             // Mark client as connected
             self.is_connected = true;
-            self.server_channel
-                .sender
+            self.to_server_tx
                 .send(String::from("Connected"))
                 .expect("Error notifying server of client connection.");
 
@@ -101,7 +103,7 @@ impl TcpClientHandler {
                 }
 
                 // Check for messages from server
-                match self.server_channel.receiver.try_recv() {
+                match self.from_server_rx.try_recv() {
                     Ok(message) => {
                         if message == "Disconnect" {
                             debug!(
@@ -126,7 +128,7 @@ impl TcpClientHandler {
             }
 
             // Finalize disconnect
-            self.server_channel.sender.send(String::from("Disconnected")).expect("Error notifying server that client disconnected.");
+            self.to_server_tx.send(String::from("Disconnected")).expect("Error notifying server that client disconnected.");
         });        
     }
 
@@ -136,8 +138,7 @@ impl TcpClientHandler {
     fn handle_disconnect(&mut self) {
         debug!("[TCP Client Handler] ({0}) Disconnected.", &self.address);
         self.is_connected = false;
-        self.server_channel
-            .sender
+        self.to_server_tx
             .send(String::from("Client Disconnect"))
             .expect("Error notifying server of client disconnect.");
     }
@@ -151,18 +152,24 @@ impl TcpClientHandler {
             TcpClientAction::CloseConnection => {
                 self.handle_disconnect();
             }
+            TcpClientAction::HandleMessage(message) => {
+                self.handle_message(message);
+            }
             TcpClientAction::UpgradeToWebSocket(sec_websocket_key) => {
                 self.handle_websocket_upgrade_request(
                     sec_websocket_key);
             }
             TcpClientAction::RequestServerShutdown => {
                 debug!("[TCP Client Handler] ({0}): Received ShutdownServer request from handler.", self.address);
-                self.server_channel
-                    .sender
+                self.to_server_tx
                     .send(String::from("ShutdownServer"))
                     .expect("Error notifying server of shutdown request.");
             }
         }
+    }
+
+    fn handle_message(&mut self, message: String) {
+        self.to_server_tx.send(message).expect("Error notifying server of received message.");
     }
 
     /**
@@ -171,8 +178,7 @@ impl TcpClientHandler {
     fn handle_error(self: &TcpClientHandler, error: &std::io::Error) {
         warn!("[TCP Client Handler] ({0}) Error: {1}", &self.address, error);
         // Inform the server of the error
-        self.server_channel
-            .sender
+        self.to_server_tx
             .send(String::from("Client Communication Error"))
             .expect("Error notifying server of client communication error.");
     }
@@ -197,8 +203,7 @@ impl TcpClientHandler {
             .expect("Error sending response to upgrade to websocket.");
 
         // Communicate to server that connection has upgraded to WebSocket
-        self.server_channel
-            .sender
+        self.to_server_tx
             .send(String::from("Upgrade to WebSocket"))
             .expect("Error notifying server of WebSocket upgrade.");
 

@@ -27,7 +27,7 @@ impl TcpClientRequestHandler for WebSocketClientRequestHandler {
         //     println!("Byte {0: >2} is {1: >3}: {1:0>8b}", i, data[i]);
         // }
         let content = parse_websocket_frame(data, num_bytes);
-        debug!("Received: {0}", content);       
+        debug!("Received: {0}", content);
         
         // TODO: This should be a command-parser (vs. multiple if statement blocks)
         // Check for ShutdownServer command
@@ -35,7 +35,7 @@ impl TcpClientRequestHandler for WebSocketClientRequestHandler {
             return TcpClientAction::RequestServerShutdown;
         }
 
-        return TcpClientAction::None;
+        return TcpClientAction::HandleMessage(content);
     }
 }
 

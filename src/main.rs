@@ -4,11 +4,12 @@ extern crate colored;
 extern crate log4rs;
 extern crate sha1;
 
-mod channel;
 mod client_handler;
 mod http;
+mod extimpl;
 
 use banner::{Banner, Color, HeaderLevel, Style};
+use extimpl::MyServerImpl;
 use http::TcpServer;
 use log::{debug, info, LevelFilter, SetLoggerError};
 use log4rs::{
@@ -45,6 +46,9 @@ fn main() {
     
     print_startup_banner(&ip, &port);
 
+    // Create client handler
+    let my_server: MyServerImpl = MyServerImpl::new(String::from("MyServer"));
+
     // Channel to communicate with the servers
     let (main_to_server_tx, main_to_server_rx) = std::sync::mpsc::channel::<String>();
     let (server_to_main_tx, server_to_main_rx) = std::sync::mpsc::channel::<String>();
@@ -52,7 +56,8 @@ fn main() {
     let server_address = format!("{0}:{1}", &ip, &port);
     let server: TcpServer = TcpServer {
         address: server_address,
-        name: String::from("Client Server"),
+        name: String::from("My Server"),
+        handler: Box::new(my_server),
         main_to_server_rx: main_to_server_rx,
         server_to_main_tx: server_to_main_tx,
     };
@@ -148,7 +153,6 @@ fn print_startup_banner(ip: &str, port: &str) {
 }
 
 fn init_logging() -> Result<(), SetLoggerError> {
-    let level = log::LevelFilter::Debug;
     let file_path = "tmp/rusttcpserver.log";
 
     // Build a stderr logger
@@ -175,7 +179,7 @@ fn init_logging() -> Result<(), SetLoggerError> {
         .appender(Appender::builder().build("logfile", Box::new(logfile)))
         .appender(
             Appender::builder()
-                .filter(Box::new(ThresholdFilter::new(level)))
+                .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Debug)))
                 .build("stdout", Box::new(stdout)),
         )
         .appender(
