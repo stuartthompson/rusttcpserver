@@ -35,7 +35,7 @@ impl ClientHandler for MyServerImpl {
         // Echo the message back
         self.to_server_tx.send(Request {
             client_id: String::from(client_id),
-            action: Action::SendMessage(String::from(message)),
+            action: Action::SendMessage(String::from(format!("Echo: {}", message))),
         }).expect("Error sending request to server.");
         //self.to_server_tx.send(String::from("Send"));
     }
