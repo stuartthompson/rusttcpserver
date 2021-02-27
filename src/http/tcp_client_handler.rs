@@ -4,6 +4,7 @@ use log::{debug, warn};
 use super::response;
 use super::http_request_handler::HttpClientRequestHandler;
 use super::websocket_request_handler::WebSocketClientRequestHandler;
+use crate::http::{Request, Action};
 
 pub struct TcpClientHandler {
     address: std::net::SocketAddr,
@@ -11,7 +12,7 @@ pub struct TcpClientHandler {
     client_type: TcpClientType,
     stream: std::net::TcpStream,
     to_server_tx: Sender<String>,
-    from_server_rx: Receiver<String>,
+    from_server_rx: Receiver<Request>,
     request_handler: Box<dyn TcpClientRequestHandler + Send>
 }
 
@@ -50,7 +51,7 @@ impl TcpClientHandler {
         address: std::net::SocketAddr,
         client_type: TcpClientType,
         to_server_tx: Sender<String>,
-        from_server_rx: Receiver<String>,
+        from_server_rx: Receiver<Request>,
     ) {
         // Create the TCP client handler for this client
         let handler = TcpClientHandler {
@@ -112,24 +113,23 @@ impl TcpClientHandler {
 
                 // Check for messages from server
                 match self.from_server_rx.try_recv() {
-                    Ok(message) => {
-                        debug!("[Client @ {0}] Received message from server: {1}.", self.address, message);
-
-                        if message == "Disconnect" {
-                            debug!(
-                                "[Client @ {0}] Received notification from server to disconnect.",
-                                self.address
-                            );
-                            self.stream
-                                .shutdown(std::net::Shutdown::Both)
-                                .expect("Failed to shutdown client.");
-                            // Mark the client as disconnected
-                            self.is_connected = false;
-                        }
-
-                        if message == "Send" {
-                            debug!("[Client @ {0}] Received notification from server to send a message.", self.address);
-                            (*self.request_handler).send_response(&mut self.stream, String::from("Bazinga!"));
+                    Ok(request) => {
+                        match request.action {
+                            Action::SendMessage(message) => {
+                                debug!("[Client @ {0}] Received notification from server to send a message.", self.address);
+                                (*self.request_handler).send_response(&mut self.stream, message);    
+                            }
+                            Action::Stop => {
+                                debug!(
+                                    "[Client @ {0}] Received notification from server to disconnect.",
+                                    self.address
+                                );
+                                self.stream
+                                    .shutdown(std::net::Shutdown::Both)
+                                    .expect("Failed to shutdown client.");
+                                // Mark the client as disconnected
+                                self.is_connected = false;
+                            }
                         }
                     }
                     Err(TryRecvError::Empty) => {}

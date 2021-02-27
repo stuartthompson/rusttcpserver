@@ -1,14 +1,25 @@
+use std::collections::HashMap;
+use std::sync::mpsc::{channel, TryRecvError, Sender, Receiver};
+use log::{debug, warn};
 use super::tcp_client_handler::{TcpClientHandler, TcpClientType};
 use crate::client_handler::ClientHandler;
-use log::{debug, info, warn};
-use std::sync::mpsc::{channel, TryRecvError, Sender, Receiver};
 
 struct TcpClient {
     pub address: std::net::SocketAddr,
     pub client_type: TcpClientType,
     pub is_connected: bool,
-    pub to_client_tx: Sender<String>,
+    pub to_client_tx: Sender<Request>,
     pub from_client_rx: Receiver<String>
+}
+
+pub struct Request {
+    pub client_id: String,
+    pub action: Action
+}
+
+pub enum Action {
+    SendMessage(String),
+    Stop
 }
 
 /**
@@ -18,7 +29,7 @@ pub struct TcpServer {
     pub address: String,
     pub name: String,
     pub handler: Box<dyn ClientHandler + Send>,
-    pub main_to_server_rx: Receiver<String>,
+    pub main_to_server_rx: Receiver<Request>,
     pub server_to_main_tx: Sender<String>,
 }
 
@@ -35,9 +46,7 @@ impl TcpServer {
 
             // Set to non-blocking mode
             match listener.set_nonblocking(true) {
-                Ok(_) => {
-                    debug!("Set to non-blocking mode.");
-                }
+                Ok(_) => {}
                 Err(err) => {
                     warn!("[Server] Could not set non-blocking mode. Error: {0}", err);
                 }
@@ -46,7 +55,7 @@ impl TcpServer {
             debug!("[Server] ({0}) listening on {1}", &self.name, &self.address);
 
             let mut server_running: bool = true;
-            let mut clients: Vec<TcpClient> = Vec::new();
+            let mut clients: HashMap<String, TcpClient> = HashMap::new();
 
             while server_running {
                 // Check for an incoming connection
@@ -55,7 +64,7 @@ impl TcpServer {
                         let (client_to_server_tx, client_to_server_rx) =
                             channel::<String>();
                         let (server_to_client_tx, server_to_client_rx) =
-                            channel::<String>();
+                            channel::<Request>();
                         
                         // Hand off to a new TCP client handler
                         TcpClientHandler::handle_new_client(
@@ -75,7 +84,7 @@ impl TcpServer {
                             from_client_rx: client_to_server_rx
                         };
 
-                        &clients.push(client);
+                        &clients.insert(address.to_string(), client);
                     }
                     // Handle case where waiting for accept would become blocking
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
@@ -88,7 +97,7 @@ impl TcpServer {
                 }
 
                 // Check for notifications from clients
-                for client in clients.iter_mut() {
+                for (address, client) in clients.iter_mut() {
                     match client.from_client_rx.try_recv() {
                         Ok(message) => {
                             debug!(
@@ -101,25 +110,17 @@ impl TcpServer {
                                 client.is_connected = true;
 
                                 // Notify the handler (external implementation handler) of the new client
-                                (*self.handler).on_client_connected(&client.address.to_string());
+                                (*self.handler).on_client_connected(address);
                             }
                             
                             else if message == "Upgrade to WebSocket" {
-                                // ** UPGRADE THE HANDLER TO WEBSOCKET **
+                                // Upgrade client handler to websocket
                                 client.client_type = TcpClientType::WebSocket;
                             }
 
-                            // Check for shutdown command
-                            else if message == "ShutdownServer" {
-                                info!("[Server] Admin command ShutdownServer received. Notifying Shutdown.");
-                                self.server_to_main_tx
-                                    .send(String::from("Shutdown"))
-                                    .expect("Error sending shutdown notification to main thread.");
-                            }
-
                             else {
-                                // Notify external implementation handler of message
-                                (*self.handler).on_message_received(&client.address.to_string(), &message);
+                                // Notify external implementation handler of message from client
+                                (*self.handler).on_message_received(address, &message);
                             }
                         }
                         Err(TryRecvError::Empty) => {}
@@ -131,19 +132,16 @@ impl TcpServer {
 
                 // Check for messages from main thread
                 match self.main_to_server_rx.try_recv() {
-                    Ok(message) => {
-                        debug!(
-                            "[Server] ({0}) Received message from main thread. Message: {1}",
-                            self.name, message
-                        );
-                        if message == "Send" {
-                            // TODO: Look up correct client. Also, send actual message (need to upgrade mpsc channel type)
-                            debug!("[Server] ({0}) Instructing client at {1} to send message.", self.name, clients[0].address);
-                            clients[0].to_client_tx.send(String::from("Send")).expect("Error sending message to client.");
-                        }
-                        if message == "StopServer" {
-                            // Kill this server
-                            server_running = false;
+                    Ok(request) => {
+                        match request.action {
+                            Action::SendMessage(_) => {
+                                clients[&request.client_id.to_string()].to_client_tx.send(request).expect("Error sending message to client.");
+                            }
+                            Action::Stop => {
+                                // Stop the server
+                                debug!("[Server {0}] Received request to stop server.", self.name);
+                                server_running = false;
+                            }
                         }
                     }
                     Err(TryRecvError::Empty) => {}
@@ -158,25 +156,25 @@ impl TcpServer {
             // Shutdown clients
             let connected_clients = &clients.len();
             let mut disconnects = 0;
-            for client in &clients {
+            for (address, client) in &clients {
                 debug!(
                     "[Server] ({0}) Sending disconnect request to client at address {1}.",
-                    self.name, client.address
+                    self.name, address
                 );
                 client
                     .to_client_tx
-                    .send(String::from("Disconnect"))
+                    .send(Request { client_id: address.to_string(), action: Action::Stop})
                     .expect("[Server] ({0}) Error telling client to disconnect.");
             }
 
             while connected_clients > &disconnects {
-                for client in &clients {
+                for (address, client) in &clients {
                     match client.from_client_rx.try_recv() {
                         Ok(message) => {
                             if message == "Disconnected" {
                                 debug!(
                                     "[{0}] Client @ {1} disconnected.",
-                                    self.name, client.address
+                                    self.name, address
                                 );
                                 disconnects = disconnects + 1;
                             }

@@ -27,6 +27,9 @@ impl TcpClientRequestHandler for WebSocketClientRequestHandler {
         for i in 0..*num_bytes {
             println!("Byte {0: >2} is {1: >3}: {1:0>8b}", i, data[i]);
         }
+        // Print the data as a base64 encoded string
+        println!("Base64: {}", base64::encode(&data[0..*num_bytes]));
+        
         let content = parse_websocket_frame(data, num_bytes);
         debug!("Received: {0}", content);
         
